@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <title>Debrid Scout - About</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Link to External CSS -->
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" referrerpolicy="no-referrer" />
 </head>
 <body>
     <!-- Include Account Information -->
@@ -14,24 +14,17 @@
     <!-- Include Navigation Bar -->
     {% include 'navbar.html' %}
 
-    <!-- Main Content -->
     <div class="main-container">
-        <!-- Logo Section -->
         <div class="logo-container">
             <img src="{{ url_for('static', filename='logo.png') }}" alt="Debrid Scout Logo" class="logo">
         </div>
 
         <h2>About</h2>
-        <p class="subtitle">
-            Debrid Scout is a sophisticated torrent management application designed to enhance your streaming experience by seamlessly integrating with Real-Debrid's caching service.
-        </p>
+        <p class="subtitle">Debrid Scout is a sophisticated torrent management application designed to enhance your streaming experience by seamlessly integrating with Real-Debrid's caching service.</p>
 
         <div class="content-section">
             <h3>Overview</h3>
-            <p>
-                Built with <strong>Flask</strong>, Debrid Scout offers a robust platform for users to search for torrents across various indexers while taking advantage of Real-Debrid's premium features. 
-                The application simplifies the process of accessing high-quality torrents, ensuring users can easily find and stream their desired content.
-            </p>
+            <p>Built with <strong>Flask</strong>, Debrid Scout offers a robust platform for users to search for torrents across various indexers while taking advantage of Real-Debrid's premium features.</p>
         </div>
 
         <div class="content-section">
@@ -48,34 +41,20 @@
 
         <div class="content-section">
             <h3>How It Works</h3>
-            <p>
-                Debrid Scout uses a combination of <strong>Python</strong> for the backend and <strong>JavaScript</strong> for interactivity. It communicates with the Real-Debrid API to fetch account information and torrent data. 
-                Upon receiving a search query, the app interacts with multiple torrent indexers to retrieve relevant results, which are then displayed in an organized manner for easy access.
-            </p>
-            <p>
-                When a user selects a torrent, the app retrieves detailed file information, including sizes and available links, allowing users to stream directly or download content as needed.
-            </p>
+            <p>Debrid Scout uses a combination of <strong>Python</strong> for the backend and <strong>JavaScript</strong> for interactivity. It communicates with the Real-Debrid API to fetch account information and torrent data.</p>
         </div>
 
         <div class="content-section">
             <h3>Join the Community</h3>
-            <p>
-                Debrid Scout is continuously evolving, with features being added based on user feedback. 
-                We encourage users to reach out with suggestions and report any issues to help improve the application further.
-            </p>
+            <p>Debrid Scout is continuously evolving, with features being added based on user feedback. We encourage users to reach out with suggestions and report any issues to help improve the application further.</p>
         </div>
 
         <div class="content-section">
             <h3>Conclusion</h3>
-            <p>
-                Whether you're a casual viewer or a dedicated torrent enthusiast, Debrid Scout is designed to provide a comprehensive solution for your streaming needs. 
-                Experience the ease of accessing high-quality torrents and enjoy a seamless viewing experience with Real-Debrid integration. 
-                Thank you for choosing Debrid Scout!
-            </p>
+            <p>Whether you're a casual viewer or a dedicated torrent enthusiast, Debrid Scout is designed to provide a comprehensive solution for your streaming needs. Thank you for choosing Debrid Scout!</p>
         </div>
     </div>
 
-    <!-- Link to External JavaScript -->
     <script type="text/javascript" src="{{ url_for('static', filename='js/scripts.js') }}"></script>
 </body>
 </html>
