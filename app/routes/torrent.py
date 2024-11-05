@@ -188,3 +188,33 @@ def get_torrent_details(torrent_id):
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching torrent info from Real-Debrid API: {e}")
         return jsonify({'error': 'Failed to retrieve file information from Real-Debrid'}), 500
+
+
+@torrent_bp.route('/delete_torrents', methods=['POST'])
+def delete_torrents():
+    data = request.get_json()
+    torrent_ids = data.get('torrentIds', [])
+    REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
+    headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
+    
+    if not torrent_ids:
+        return jsonify({'status': 'error', 'message': 'No torrent IDs provided'}), 400
+    
+    results = {'deleted': [], 'failed': []}
+    
+    for torrent_id in torrent_ids:
+        try:
+            response = requests.delete(
+                f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}',
+                headers=headers
+            )
+            response.raise_for_status()
+            results['deleted'].append(torrent_id)
+            logger.info(f"Deleted torrent ID: {torrent_id}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to delete torrent ID {torrent_id}: {e}")
+            results['failed'].append(torrent_id)
+    
+    if results['failed']:
+        return jsonify({'status': 'partial_success', 'results': results}), 207  # Multi-status code
+    return jsonify({'status': 'success', 'results': results}), 200

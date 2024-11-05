@@ -282,7 +282,7 @@ function confirmDeletion(torrentId) {
     }
 }
 
-// Delete all selected torrents
+// batch delete multiple torrents
 function deleteSelectedTorrents() {
     const selectedCheckboxes = document.querySelectorAll(".torrent-checkbox:checked");
 
@@ -292,29 +292,27 @@ function deleteSelectedTorrents() {
     }
 
     if (confirm(`Are you sure you want to delete the selected ${selectedCheckboxes.length} torrent(s)?`)) {
-        const delay = 500;
+        const torrentIds = Array.from(selectedCheckboxes).map(checkbox => checkbox.value);
 
-        selectedCheckboxes.forEach((checkbox, index) => {
-            setTimeout(() => {
-                const torrentId = checkbox.value; // Ensure value is properly set
-                console.log(`Deleting torrent ID: ${torrentId}`); // Log to confirm value
-                fetch(`/torrent/delete_torrent/${encodeURIComponent(torrentId)}`, { method: 'DELETE' }) // Updated endpoint
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            console.log(`Torrent ${torrentId} deleted successfully.`);
-                        } else {
-                            console.error(`Failed to delete torrent ${torrentId}: `, data.message);
-                        }
-                    })
-                    .catch(error => console.error(`Error deleting torrent ${torrentId}:`, error));
-            }, index * delay);
-        });
-
-        setTimeout(() => {
-            alert("Selected torrents have been deleted.");
+        fetch(`/torrent/delete_torrents`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ torrentIds }),
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to delete selected torrents');
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'success') {
+                alert("Selected torrents have been deleted successfully.");
+            } else if (data.status === 'partial_success') {
+                alert("Some torrents could not be deleted.");
+                console.log("Partial deletion results:", data.results);
+            }
             location.reload();
-        }, selectedCheckboxes.length * delay);
+        })
+        .catch(error => console.error("Error deleting selected torrents:", error));
     }
 }
 
