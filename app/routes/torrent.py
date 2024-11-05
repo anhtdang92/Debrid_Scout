@@ -22,7 +22,7 @@ def rd_manager():
     if REAL_DEBRID_API_KEY:
         real_debrid_service = RealDebridService(api_key=REAL_DEBRID_API_KEY)
         account_info = real_debrid_service.get_account_info()
-        
+
         if account_info:
             all_torrents = real_debrid_service.get_all_torrents()
             total_torrents = len(all_torrents)
@@ -59,7 +59,7 @@ def delete_torrent(torrent_id):
     except requests.exceptions.RequestException as e:
         logger.error(f"Error deleting torrent from Real-Debrid API: {e}")
         return jsonify({'status': 'error', 'message': 'Failed to delete torrent'}), 500
-        
+
 @torrent_bp.route('/stream_vlc', methods=['POST'])
 def stream_vlc():
     logger.debug("Received request at /stream_vlc")
@@ -98,7 +98,7 @@ def stream_vlc():
     except Exception as e:
         logger.error(f"Error launching VLC: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
-    
+
 @torrent_bp.route('/unrestrict_link', methods=['POST'])
 def unrestrict_link():
     data = request.get_json()
@@ -106,7 +106,7 @@ def unrestrict_link():
 
     original_link = data.get('link')
     api_key = current_app.config.get('REAL_DEBRID_API_KEY')
-    
+
     logger.debug(f"Original Link: {original_link}")
     logger.debug(f"API Key: {api_key is not None}")  # Log if API key is present
 
@@ -130,7 +130,7 @@ def unrestrict_link():
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         return jsonify({'error': 'An unexpected error occurred'}), 500
-    
+
 @torrent_bp.route('/torrents/<torrent_id>', methods=['GET'])
 def get_torrent_details(torrent_id):
     REAL_DEBRID_API_KEY = os.getenv('REAL_DEBRID_API_KEY')
@@ -196,12 +196,12 @@ def delete_torrents():
     torrent_ids = data.get('torrentIds', [])
     REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
     headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
-    
+
     if not torrent_ids:
         return jsonify({'status': 'error', 'message': 'No torrent IDs provided'}), 400
-    
+
     results = {'deleted': [], 'failed': []}
-    
+
     for torrent_id in torrent_ids:
         try:
             response = requests.delete(
@@ -214,7 +214,7 @@ def delete_torrents():
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to delete torrent ID {torrent_id}: {e}")
             results['failed'].append(torrent_id)
-    
+
     if results['failed']:
         return jsonify({'status': 'partial_success', 'results': results}), 207  # Multi-status code
     return jsonify({'status': 'success', 'results': results}), 200

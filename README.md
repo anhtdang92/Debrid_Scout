@@ -34,7 +34,7 @@ JACKETT_URL=<your_jackett_url>
 JACKETT_API_KEY=<your_jackett_api_key>
 REAL_DEBRID_API_KEY=<your_real_debrid_api_key>
 ```
-Make sure the URL starts with `http://` or `https://`. 
+Make sure the URL starts with `http://` or `https://`.
 
 ## 🖥 Usage
 To run the application, execute the script:

@@ -22,7 +22,7 @@ class RealDebridService:
         if not self.api_key:
             logger.error("REAL_DEBRID_API_KEY is not set.")
             raise RealDebridError("Real-Debrid API key is missing.")
-        
+
         # Headers for authentication in Real-Debrid API requests
         self.headers = {
             'Authorization': f'Bearer {self.api_key}'
@@ -143,14 +143,14 @@ class RealDebridService:
                     f'https://api.real-debrid.com/rest/1.0/torrents?page={page}',
                     headers=self.headers
                 )
-                
+
                 if response.status_code == 204:
                     logger.info("No more torrents available.")
                     break
-                
+
                 response.raise_for_status()
                 torrents = response.json()
-                
+
                 if not torrents:
                     logger.debug("No torrents on current page, stopping pagination.")
                     break

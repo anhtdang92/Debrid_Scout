@@ -213,7 +213,7 @@ function showFiles(torrentId) {
                         const isVideo = window.videoExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
                         const listItem = document.createElement('li');
                         listItem.innerHTML = `
-                            <strong>${file.name}</strong> (${file.size}): 
+                            <strong>${file.name}</strong> (${file.size}):
                             <button class="button" onclick="getUnrestrictedLink('${file.link}')">Download</button>
                             ${isVideo ? `<button class="button" onclick="streamInVLC('${file.link}')">Stream in VLC</button>` : ''}
                         `;
@@ -350,7 +350,7 @@ function isValidUrl(string) {
         new URL(string);
         return true;
     } catch (_) {
-        return false;   
+        return false;
     }
 }
 

@@ -264,8 +264,8 @@ input[type="number"]:focus {
 }
 
 /* General Button Styles */
-.button, 
-.submit-button, 
+.button,
+.submit-button,
 .delete-button,
 .debrid-button {
     padding: 10px 18px; /* Increased padding for emphasis */
@@ -332,7 +332,7 @@ input[type="number"]:focus {
 }
 
 /* Header Cells */
-.index-table th, 
+.index-table th,
 .index-table td {
     padding: 12px;
     text-align: center;
@@ -399,7 +399,7 @@ input[type="number"]:focus {
 }
 
 /* Header Cells */
-.rd-manager-table th, 
+.rd-manager-table th,
 .rd-manager-table td {
     padding: 14px;
     text-align: center;
@@ -756,8 +756,8 @@ input[type="checkbox"]:checked::after {
         width: 100%;
     }
 
-    .button, 
-    .submit-button, 
+    .button,
+    .submit-button,
     .delete-button,
     .debrid-button {
         width: 100%;
@@ -920,15 +920,15 @@ input[type="checkbox"]:checked::after {
 }
 
 /* Focus Styles for Accessibility */
-button:focus, 
+button:focus,
 input:focus {
     outline: 2px solid #008CBA;
     outline-offset: 2px;
 }
 
 /* Button Base Styles */
-.button, 
-.submit-button, 
+.button,
+.submit-button,
 .delete-button,
 .debrid-button {
     min-width: 30px;

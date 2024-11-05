@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def account_info():
     """
     Render the account information page with details from Real-Debrid and Jackett.
-    
+
     Utilizes the RealDebridService to fetch account information.
     Handles errors gracefully and provides meaningful feedback to the user.
     """

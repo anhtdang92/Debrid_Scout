@@ -49,7 +49,7 @@ class FileHelper:
                 return f"{size_in_bytes:.2f} {unit}"
             size_in_bytes /= 1024
         return f"{size_in_bytes:.2f} PB"  # In case the file size is unusually large
-    
+
     @staticmethod
     def simplify_filename(file_name):
         parts = file_name.rsplit('.', 1)
