@@ -1,0 +1,29 @@
+<div class="account-info">
+    {% if account_info %}
+        <div class="account-details">
+            <div class="account-text">
+                <p><i class="fa-solid fa-user"></i> <strong>Username:</strong> {{ account_info.username }}</p>
+                <p><i class="fa-solid fa-envelope"></i> <strong>Email:</strong> {{ account_info.email }}</p>
+                <p><i class="fa-solid fa-clock"></i> <strong>Expires:</strong> {{ account_info.formatted_expiration }}</p>
+            </div>
+            <div class="account-links">
+                <a href="https://real-debrid.com" target="_blank" class="debrid-button">
+                    <i class="fa-solid fa-external-link-alt"></i> Real Debrid
+                </a>
+                <a href="{{ jackett_url or '#' }}" target="_blank" class="debrid-button">
+                    <i class="fa-solid fa-external-link-alt"></i> Jackett
+                </a>
+            </div>
+        </div>
+    {% else %}
+        <div class="error-message">
+            {% if not real_debrid_api_key %}
+                <p>Error: Real-Debrid API key is not set. Please configure the API key correctly.</p>
+            {% elif real_debrid_api_error %}
+                <p>Error: Failed to fetch Real-Debrid account information. {{ real_debrid_api_error }}</p>
+            {% else %}
+                <p>Unable to fetch account information.</p>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>

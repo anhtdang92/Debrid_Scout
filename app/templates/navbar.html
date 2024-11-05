@@ -1,0 +1,25 @@
+<!-- templates/navbar.html -->
+<nav class="navbar">
+    <ul class="nav-links">
+        <li>
+            <a href="{{ url_for('search.index') }}" class="{% if request.endpoint == 'search.index' %}active{% endif %}">
+                <i class="fa-solid fa-search"></i> DS - Search
+            </a>
+        </li>
+        <li>
+            <a href="{{ url_for('torrent.rd_manager') }}" class="{% if request.endpoint == 'torrent.rd_manager' %}active{% endif %}">
+                <i class="fa-solid fa-tasks"></i> RD - Manager
+            </a>
+        </li>
+        <li>
+            <a href="{{ url_for('info.about') }}" class="{% if request.endpoint == 'info.about' %}active{% endif %}">
+                <i class="fa-solid fa-info-circle"></i> About
+            </a>
+        </li>
+        <li>
+            <a href="{{ url_for('info.contact') }}" class="{% if request.endpoint == 'info.contact' %}active{% endif %}">
+                <i class="fa-solid fa-envelope"></i> Contact
+            </a>
+        </li>
+    </ul>
+</nav>

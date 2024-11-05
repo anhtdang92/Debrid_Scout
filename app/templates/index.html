@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Debrid Scout - Search</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Link to External CSS -->
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" referrerpolicy="no-referrer" />
+</head>
+<body>
+    <!-- Loading Indicator -->
+    <div id="loading">
+        <div id="loading-content">
+            <div class="spinner"></div>
+            <div>Loading...</div>
+        </div>
+    </div>
+
+    <!-- Include Account Information -->
+    {% include 'account_info.html' %}
+
+    <!-- Include Navigation Bar -->
+    {% include 'navbar.html' %}
+
+    <!-- Main Content -->
+    <div class="main-container">
+        <div class="container">
+            <!-- Logo Section -->
+            <div class="logo-container">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Debrid Scout Logo" class="logo">
+            </div>
+
+            <h2 id="home">Search</h2>
+            <p class="subtitle">Torrent Search with Real-Debrid Cached Status</p>
+
+            <form method="post" id="search-form">
+                <div class="form-group">
+                    <label for="query">Search Query:</label>
+                    <div class="input-group search-container">
+                        <i class="fa-solid fa-magnifying-glass input-group-addon"></i>
+                        <input type="text" id="query" name="query" placeholder="Enter your search term..." required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="limit">Limit:</label>
+                    <input type="number" id="limit" name="limit" value="10" min="1" required>
+                </div>
+                <div class="form-group full-width">
+                    <button type="submit" class="submit-button" id="submit-button">
+                        <i class="fa-solid fa-paper-plane"></i> Submit
+                    </button>
+                </div>
+            </form>
+
+            {% if error %}
+                <div class="error-message">
+                    <p>{{ error }}</p>
+                    {% if stderr %}
+                        <pre>{{ stderr }}</pre>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            {% if output %}
+                <div class="output-message">
+                    <p>{{ output }}</p>
+                </div>
+            {% endif %}
+
+            {% if data and data|length > 0 %}
+                <div class="total-results">
+                    Total Torrents Found: {{ data|length }}
+                </div>
+                <!-- Display Processing Time -->
+                {% if overall_time %}
+                    <div class="processing-time">
+                        Processing Time: {{ overall_time }} seconds
+                    </div>
+                {% endif %}
+                <h2 id="search">Results:</h2>
+                <table class="index-table">
+                    <colgroup>
+                        <col>
+                        <col>
+                        <col>
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>Torrent Name</th>
+                            <th>Categories</th>
+                            <th>Files</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for torrent in data %}
+                        <tr>
+                            <td>{{ torrent['Torrent Name'] }}</td>
+                            <td class="categories">
+                                {% for category in torrent['Categories'] %}
+                                    {% set category_name = category.strip() %}
+                                    {% set icon_class = category_icons.get(category_name, 'fa-question-circle') %}
+                                    <i class="fa {{ icon_class }}" aria-hidden="true" title="{{ category_name }}"></i>
+                                    <span class="sr-only">{{ category_name }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                {% if torrent['Files']|length == 1 %}
+                                    {% set file = torrent['Files'][0] %}
+                                    <div>
+                                        <div>
+                                            <strong>File:</strong> {{ simplify_filename(file['File Name']) }}
+                                            <br>
+                                            <strong>Size:</strong> {{ file['File Size'] }}
+                                        </div>
+                                        <div class="file-actions">
+                                            <a href="{{ file['Download Link'] }}" class="button" target="_blank">
+                                                <i class="fa-solid fa-download"></i> Download
+                                            </a>
+                                            <button class="button" onclick="launchVLC('{{ file['Download Link'] }}');" style="margin-left: 10px;">
+                                                <i class="fa-solid fa-play"></i> VLC
+                                            </button>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <button class="button" onclick="openFileModal('{{ loop.index }}')">
+                                        Show Files ({{ torrent['Files']|length }})
+                                    </button>
+
+                                    <!-- Modal for showing files -->
+                                    <div id="modal-{{ loop.index }}" class="rd-modal">
+                                        <div class="rd-modal-content">
+                                            <span class="rd-close" onclick="closeIndexModal('modal-{{ loop.index }}')">&times;</span>
+                                            <h3>{{ simplify_filename(torrent['Torrent Name']) }}</h3>
+                                            <div class="scrollable-content">
+                                                {% for file in torrent['Files'] %}
+                                                    <div class="file-info">
+                                                        <div class="file-name">
+                                                            <strong>File:</strong> {{ simplify_filename(file['File Name']) }}
+                                                            <br>
+                                                            <strong>Size:</strong> {{ file['File Size'] }}
+                                                        </div>
+                                                        <div class="file-actions">
+                                                            <a href="{{ file['Download Link'] }}" class="button" target="_blank">
+                                                                <i class="fa-solid fa-download"></i> Download
+                                                            </a>
+                                                            <button class="button" onclick="launchVLC('{{ file['Download Link'] }}')" style="margin-left: 10px;">
+                                                                <i class="fa-solid fa-play"></i> VLC
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Link to External JavaScript -->
+    <script type="text/javascript" src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+</body>
+</html>
