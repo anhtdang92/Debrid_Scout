@@ -64,6 +64,7 @@ When prompted, enter your search query and the desired number of results to fetc
 ```
 JACKETT_URL=https://my-jackett-instance.com
 JACKETT_API_KEY=my-secret-api-key
+REAL_DEBRID_API_KEY=my-real-debrid-api-key
 ```
 
 ## 🤝 Contributing
