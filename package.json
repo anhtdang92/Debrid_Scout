@@ -1,1 +1,18 @@
-{}
+{
+  "name": "your-project-name",
+  "version": "1.0.3",
+  "description": "Your project description",
+  "main": "index.js",
+  "scripts": {
+    "release": "standard-version"
+  },
+  "devDependencies": {
+    "cz-conventional-changelog": "^3.3.0",
+    "standard-version": "^9.5.0"
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
+  }
+}
