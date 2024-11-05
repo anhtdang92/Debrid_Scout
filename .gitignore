@@ -37,3 +37,5 @@ Thumbs.db
 # Other miscellaneous files
 *.sqlite3
 *.db
+
+node_modules/
