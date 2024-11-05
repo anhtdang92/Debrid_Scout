@@ -157,7 +157,7 @@ function launchVLC(link) {
 
 // Stream in VLC with unrestricted link
 function streamInVLC(originalLink) {
-    fetch('/unrestrict_link', {
+    fetch('/torrent/unrestrict_link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ link: originalLink }),
@@ -195,7 +195,7 @@ function showFiles(torrentId) {
     filesList.innerHTML = '<li>Loading files...</li>'; // Show loading message
     console.log("Fetching files for torrent ID:", torrentId);
 
-    fetch('/torrents/' + torrentId)
+    fetch(`/torrent/torrents/${encodeURIComponent(torrentId)}`) // Updated endpoint
         .then(response => {
             if (!response.ok) {
                 throw new Error('Network response was not ok');
@@ -245,9 +245,21 @@ function showFiles(torrentId) {
 
 // Delete a single torrent with confirmation
 function deleteTorrent(torrentId) {
+    console.log("Attempting to delete torrent with ID:", torrentId); // Log the torrentId
+
+    if (!torrentId || typeof torrentId !== 'string') {
+        alert('Invalid torrent ID provided.');
+        return;
+    }
+
     if (confirm("Are you sure you want to delete this torrent? This action cannot be undone.")) {
-        fetch(`/delete_torrent/${torrentId}`, { method: 'DELETE' })
-            .then(response => response.json())
+        fetch(`/torrent/delete_torrent/${encodeURIComponent(torrentId)}`, { method: 'DELETE' }) // Updated endpoint
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status} - ${response.statusText}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.status === 'success') {
                     alert("Torrent deleted successfully!");
@@ -260,6 +272,13 @@ function deleteTorrent(torrentId) {
                 console.error("Error deleting torrent:", error);
                 alert("An error occurred while trying to delete the torrent: " + error.message);
             });
+    }
+}
+
+function confirmDeletion(torrentId) {
+    const confirmation = confirm("Are you sure you want to delete this torrent?");
+    if (confirmation) {
+        deleteTorrent(torrentId);
     }
 }
 
@@ -277,8 +296,9 @@ function deleteSelectedTorrents() {
 
         selectedCheckboxes.forEach((checkbox, index) => {
             setTimeout(() => {
-                const torrentId = checkbox.value;
-                fetch(`/delete_torrent/${torrentId}`, { method: 'DELETE' })
+                const torrentId = checkbox.value; // Ensure value is properly set
+                console.log(`Deleting torrent ID: ${torrentId}`); // Log to confirm value
+                fetch(`/torrent/delete_torrent/${encodeURIComponent(torrentId)}`, { method: 'DELETE' }) // Updated endpoint
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'success') {
