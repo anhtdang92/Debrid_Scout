@@ -1,6 +1,6 @@
 # Debrid Scout - Torrent Search Application using Jackett
 
-![Logo](https://github.com/anhtdang92/Debrid_Scout/blob/main/static/logo.png)
+![Logo](https://github.com/anhtdang92/Debrid_Scout/blob/main/app/static/logo.png)
 
 ---
 
