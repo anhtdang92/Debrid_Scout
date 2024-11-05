@@ -32,6 +32,7 @@ Create a `.env` file in the root of your project directory and add the following
 ```
 JACKETT_URL=<your_jackett_url>
 JACKETT_API_KEY=<your_jackett_api_key>
+REAL_DEBRID_API_KEY=<your_real_debrid_api_key>
 ```
 Make sure the URL starts with `http://` or `https://`. 
 
