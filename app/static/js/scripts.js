@@ -463,3 +463,5 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 // Test commit
+// test lint
+console.log('Test lint-staged')
