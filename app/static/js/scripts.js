@@ -268,63 +268,68 @@ function showFiles(torrentId) {
   filesList.innerHTML = "<li>Loading files...</li>"; // Show loading message
   console.log("Fetching files for torrent ID:", torrentId);
 
-  fetch(`/torrent/torrents/${encodeURIComponent(torrentId)}`) // Updated endpoint
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error("Network response was not ok");
-      }
-      return response.json();
-    })
-    .then((data) => {
-      console.log("Data received from server for torrent ID:", torrentId, data);
-      filesList.innerHTML = "";
+  fetch(`/torrent/torrents/${encodeURIComponent(torrentId)}`)
+      .then((response) => {
+          if (!response.ok) {
+              throw new Error("Network response was not ok");
+          }
+          return response.json();
+      })
+      .then((data) => {
+          console.log("Data received from server for torrent ID:", torrentId, data);
+          filesList.innerHTML = "";
 
-      if (Array.isArray(data.files)) {
-        const validFiles = data.files.filter((file) => file.size !== "0.00 GB");
-        if (validFiles.length > 0) {
-          validFiles.forEach((file) => {
-            const isVideo = window.videoExtensions.some((ext) =>
-              file.name.toLowerCase().endsWith(ext)
-            );
-            const listItem = document.createElement("li");
-            listItem.innerHTML = `
-                            <strong>${file.name}</strong> (${file.size}):
-                            <button class="button" onclick="getUnrestrictedLink('${
-                              file.link
-                            }')">Download</button>
-                            ${
-                              isVideo
-                                ? `<button class="button" onclick="streamInVLC('${file.link}')">Stream in VLC</button>`
-                                : ""
-                            }
-                        `;
-            filesList.appendChild(listItem);
-          });
-        } else {
-          filesList.innerHTML =
-            "<li><strong>No valid files available for this torrent.</strong></li>";
-        }
-      } else {
-        filesList.innerHTML =
-          "<li><strong>Error: No files data found.</strong></li>";
-      }
+          if (Array.isArray(data.files)) {
+              const validFiles = data.files.filter((file) => file.size !== "0.00 GB");
+              if (validFiles.length > 0) {
+                  validFiles.forEach((file) => {
+                      const isVideo = window.videoExtensions.some((ext) =>
+                          file.name.toLowerCase().endsWith(ext)
+                      );
+                      const listItem = document.createElement("li");
+                      listItem.innerHTML = `
+                          <div class="file-info">
+                              <div class="file-name">
+                                  <strong>${file.name}</strong> (${file.size})
+                              </div>
+                              <div class="file-actions">
+                                  <a href="${file.link}" class="button" target="_blank">
+                                      <i class="fa-solid fa-download"></i> Download
+                                  </a>
+                                  ${
+                                      isVideo
+                                          ? `<button class="button" onclick="streamInVLC('${file.link}')">
+                                                  <i class="fa-solid fa-play"></i> VLC
+                                             </button>`
+                                          : ""
+                                  }
+                              </div>
+                          </div>
+                      `;
+                      filesList.appendChild(listItem);
+                  });
+              } else {
+                  filesList.innerHTML = "<li><strong>No valid files available for this torrent.</strong></li>";
+              }
+          } else {
+              filesList.innerHTML = "<li><strong>Error: No files data found.</strong></li>";
+          }
 
-      const modalTitle = document.getElementById("modal-files-title");
-      if (modalTitle) {
-        modalTitle.innerText = data.filename || "Unknown Torrent";
-      }
+          const modalTitle = document.getElementById("modal-files-title");
+          if (modalTitle) {
+              modalTitle.innerText = data.filename || "Unknown Torrent";
+          }
 
-      const modal = document.getElementById("rdModal");
-      if (modal) {
-        modal.style.display = "flex";
-        modal.classList.add("show");
-      }
-    })
-    .catch((error) => {
-      filesList.innerHTML =
-        "<li><strong>Error loading files. Please try again.</strong></li>";
-      console.error("Error fetching torrent files:", error);
-    });
+          const modal = document.getElementById("rdModal");
+          if (modal) {
+              modal.style.display = "flex";
+              modal.classList.add("show");
+          }
+      })
+      .catch((error) => {
+          filesList.innerHTML = "<li><strong>Error loading files. Please try again.</strong></li>";
+          console.error("Error fetching torrent files:", error);
+      });
 }
 
 /**
