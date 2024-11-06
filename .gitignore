@@ -53,5 +53,9 @@ coverage/
 # Husky
 .husky/
 
-# tests file
-tests/
+# Pre-commit config (if local)
+.pre-commit-config.yaml
+
+# Package and lock files
+package-lock.json
+yarn.lock
