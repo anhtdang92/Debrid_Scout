@@ -1,77 +1,197 @@
-# Debrid Scout - Torrent Search Application using Jackett
 
-![Logo](https://github.com/anhtdang92/Debrid_Scout/blob/main/app/static/logo.png)
+# Debrid Scout - Comprehensive Torrent Search & Real-Debrid Integration
+
+![Debrid Scout Logo](https://github.com/anhtdang92/Debrid_Scout/blob/main/app/static/logo.png)  
+*A clean, sleek logo representing Debrid Scout's purpose*
+
+Debrid Scout is a **Python** application combining **Jackett**'s powerful multi-indexer torrent search with **Real-Debrid** caching and unrestriction. Designed with a user-friendly interface and modular backend, Debrid Scout offers streamlined torrent access and download capabilities, making it the ideal tool for torrent enthusiasts.
 
 ---
 
-Debrid Scout is a **Python** application that empowers users to effortlessly search for torrents using **Jackett** across all configured indexers. With its sleek interface and powerful backend, it retrieves essential torrent information such as titles, seeders, leeches, categories, and infohashes. This README serves as a comprehensive guide for setting up, running, and maximizing your experience with Debrid Scout.
+## 🚀 Key Features
 
-## 🚀 Features
-- **Advanced Torrent Search**: Quickly search for torrents based on your input across multiple indexers.
-- **Detailed Information Display**: View comprehensive torrent data including seeders, leeches, categories, and infohash.
-- **Infohash Extraction**: Supports extraction of infohash from both magnet links and `.torrent` files.
-- **Real-time Progress Tracking**: Monitors and displays the progress of Jackett searches and parsing results.
+- 🔍 **Unified Torrent Search**: Uses Jackett to search multiple torrent indexers, retrieving detailed metadata for each result.
+- 🚀 **Real-Debrid Caching and Unrestriction**: Instantly check if torrents are cached on Real-Debrid and obtain unrestricted download links.
+- 📊 **Detailed Metadata Display**: Extracts torrent details, including title, seeders, leeches, categories, and file sizes.
+- 📐 **Modular API Structure**: Built with extensibility in mind, Debrid Scout is structured for easy expansion or customization.
+- ⚠️ **Enhanced Error Handling**: Robust logging and error messages for easy troubleshooting.
+- ☁️ **Cloudflare Bypass Support**: Uses `cloudscraper` to overcome Cloudflare challenges on protected indexers.
 
-## 🛠 Future Updates
-- **CloudFlare Bypass**: Implement FlareSolverr to enhance access to certain indexers like 1337x.
+---
 
 ## 📋 Prerequisites
-- **Python 3.x**: Ensure Python is installed on your machine.
-- **Jackett Instance**: A running and accessible Jackett instance.
-- **Environment Variables**: Set `JACKETT_URL` and `JACKETT_API_KEY` in a `.env` file.
+
+- 🐍 **Python 3.x**: Install Python 3 if not already present on your system.
+- 🖥️ **Jackett Instance**: Set up a Jackett instance with configured torrent indexers.
+- 🌐 **Real-Debrid Account**: A premium Real-Debrid account for caching and unrestriction features.
+- 🔐 **Environment Variables**: Set `JACKETT_URL`, `JACKETT_API_KEY`, and `REAL_DEBRID_API_KEY` in a `.env` file.
+
+---
 
 ## 🛠 Installation
-1. Clone the repository or download the script to your local machine.
-2. Install the required dependencies:
+
+1. **Clone the Repository**  
+   ```bash
+   git clone https://github.com/anhtdang92/Debrid_Scout.git
+   ```
+   ![Clone Repo](https://img.icons8.com/fluent/48/000000/clone.png)
+
+2. **Navigate to Project Directory**  
+   ```bash
+   cd Debrid_Scout
+   ```
+   ![Navigate Directory](https://img.icons8.com/ios-filled/50/000000/opened-folder.png)
+
+3. **Install Dependencies**  
    ```bash
    pip install -r requirements.txt
    ```
+   ![Install Dependencies](https://img.icons8.com/color/48/000000/python.png)
+
+---
 
 ## ⚙ Environment Setup
-Create a `.env` file in the root of your project directory and add the following variables:
-```
-JACKETT_URL=<your_jackett_url>
-JACKETT_API_KEY=<your_jackett_api_key>
-REAL_DEBRID_API_KEY=<your_real_debrid_api_key>
-```
-Make sure the URL starts with `http://` or `https://`.
 
-## 🖥 Usage
-To run the application, execute the script:
-```bash
-python debrid_scout.py
+📄 Create a `.env` file in the root directory with the following variables:
+```plaintext
+JACKETT_URL=https://your-jackett-url
+JACKETT_API_KEY=your-jackett-api-key
+REAL_DEBRID_API_KEY=your-real-debrid-api-key
 ```
-When prompted, enter your search query and the desired number of results to fetch. Pressing Enter without inputting anything will use default values.
+Ensure `JACKETT_URL` begins with `http://` or `https://`.
 
-## 💡 Example Workflow
-1. **Run the Script**: Execute `python debrid_scout.py`.
-2. **Enter Query**: Input your desired search term, e.g., `alien romulus 2160p`.
-3. **Receive Results**: The script will display detailed torrent information, including seeders, leeches, categories, and more.
+---
 
-## 🔍 Functions Overview
-- **`load_environment()`**: Loads environment variables from the `.env` file.
-- **`extract_infohash_from_magnet(magnet_link)`**: Extracts infohash from a given magnet link.
-- **`get_infohash_from_torrent_url(torrent_urls)`**: Retrieves the infohash from a list of `.torrent` file URLs concurrently.
-- **`search_jackett(api_key, base_url, query, limit)`**: Searches Jackett for torrents based on the provided query.
-- **`parse_results(xml_data)`**: Parses XML data returned by Jackett and extracts relevant information.
+## 🖥 Usage Guide
 
-## ⚠ Potential Errors
-- **Environment Variables Not Set**: Ensure `JACKETT_URL` and `JACKETT_API_KEY` are correctly configured in the `.env` file.
-- **Network Issues**: Verify that your Jackett instance is running and accessible.
-- **XML Parsing Errors**: If data parsing fails, check the Jackett configuration and query parameters.
+### Basic Workflow
 
-## 📄 Example `.env` File
-```
-JACKETT_URL=https://my-jackett-instance.com
-JACKETT_API_KEY=my-secret-api-key
-REAL_DEBRID_API_KEY=my-real-debrid-api-key
-```
+1. **Run the Application**  
+   ```bash
+   python debrid_scout.py
+   ```
+   ![Start Application](https://img.icons8.com/color/48/000000/play.png)
+
+2. **Enter Search Details**  
+   - Provide a search query and specify the number of results.
+   - Example: `alien romulus 2160p` with a limit of 10 results.
+
+3. **View Results**  
+   - Debrid Scout displays detailed torrent info, Real-Debrid caching status, and direct links if cached.
+
+📷 **Sample Search Result**:  
+*(Consider adding a screenshot of search results and caching status for better visualization)*
+
+### Example Workflow
+
+- **Search Query**: `alien romulus 2160p`
+- **Output**: Torrent data with title, seeders, leeches, categories, caching status, and downloadable links.
+
+---
+
+## 🔍 Code Structure Overview
+
+### Core Modules and Scripts
+
+#### 1. `Get_RD_Download_Link.py`
+*Manages interactions with Real-Debrid, including torrent addition, file selection, and download link retrieval.*
+
+- **Functions**:
+  - `add_magnet(magnet_link)`: Adds a magnet link to Real-Debrid.
+  - `select_files(torrent_id)`: Selects files in the torrent for unrestricted download.
+  - `unrestrict_links(links)`: Unrestricts links for direct download URLs.
+
+#### 2. `Jackett_Search.py`
+*Conducts Jackett searches and extracts metadata from the XML results.*
+
+- **Functions**:
+  - `search_jackett(api_key, base_url, query, limit)`: Executes Jackett search and returns XML data.
+  - `parse_results(xml_data)`: Extracts title, seeders, leeches, and categories from XML results.
+  - `get_infohash_from_torrent_url`: Retrieves infohashes from `.torrent` files.
+
+#### 3. `Get_RD_Cached_Link.py`
+*Checks Real-Debrid for caching status and returns cached links.*
+
+- **Functions**:
+  - `call_jackett_vid_search(query, limit)`: Searches Jackett for video torrents.
+  - `check_if_cached_on_real_debrid(infohash, expected_size)`: Confirms if a torrent is fully cached.
+
+### Functionality Breakdown
+
+1. **Configuration Loading**:  
+   *Securely loads environment variables using `.env` files.*
+
+2. **Metadata Extraction and Parsing**:  
+   *Efficiently retrieves and parses torrent metadata, such as infohash and categories.*
+
+3. **Real-Debrid API Interactions**:  
+   *Checks Real-Debrid caching status and fetches unrestricted download links.*
+
+4. **Error Handling**:  
+   *Comprehensive logging and error messages for easier debugging.*
+
+---
+
+## ⚠ Potential Issues & Troubleshooting
+
+### Common Issues
+
+- **Missing Environment Variables**: Ensure `JACKETT_URL`, `JACKETT_API_KEY`, and `REAL_DEBRID_API_KEY` are set in `.env`.
+- **Network Connectivity**: Verify your Jackett instance is accessible.
+- **Cloudflare Challenges**: If `cloudscraper` fails to bypass, consider using FlareSolverr for more challenging sites.
+
+### Error Messages & Resolutions
+
+1. **`Environment Variable Not Found`**  
+   *Check your `.env` file for missing keys.*
+
+2. **`Cloudflare Challenge Failed`**  
+   *Re-run the script or try adding FlareSolverr.*
+
+3. **`XML Parsing Error`**  
+   *Ensure Jackett is returning valid XML data.*
+
+---
+
+## Advanced Configuration
+
+For power users, the following options can be customized:
+- **Command-Line Arguments**: Specify search query and result limit directly via CLI.
+- **Parallel Processing**: Enable multithreading in `Get_RD_Cached_Link.py` for faster Real-Debrid checks.
+- **Rate Limiting**: Adjust API call rate limits if using a high number of indexers or Real-Debrid requests.
+
+---
+
+## 🛠 Planned Enhancements
+
+1. **UI/Frontend Development**  
+   *Integrate a web interface using Flask for enhanced usability.*
+
+2. **Logging and Error Notifications**  
+   *Add structured logging for better debugging and monitoring.*
+
+3. **Cloudflare Bypass Options**  
+   *Integrate FlareSolverr for improved handling of Cloudflare challenges.*
+
+---
 
 ## 🤝 Contributing
-Feel free to fork the repository, make modifications, and create pull requests. Contributions are welcome, especially regarding additional features or performance improvements.
+
+Contributions are welcome! Feel free to fork, modify, and submit a pull request. Areas of focus include:
+- **Feature Additions**: Expand Jackett or Real-Debrid functionality.
+- **Performance Enhancements**: Optimize caching checks and search logic.
+- **Error Handling Improvements**: Additional logging and error tracking.
+
+---
 
 ## 📜 License
-This project is licensed under the MIT License. See the LICENSE file for details.
+
+Licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
 
 ## ✉ Contact
-For questions or support, please open an issue on the GitHub repository.
+
+For questions, suggestions, or support, please open an issue on [GitHub](https://github.com/anhtdang92/Debrid_Scout) or contact via email.
+
+---
