@@ -38,4 +38,19 @@ Thumbs.db
 *.sqlite3
 *.db
 
+# Node modules
 node_modules/
+
+# Build directories
+dist/
+build/
+out/
+
+# Test coverage
+coverage/
+
+# Package lock files
+*.lock
+
+# Husky
+.husky/_/
