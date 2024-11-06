@@ -31,8 +31,6 @@ Thumbs.db
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
-# Scripts directory
-/scripts/
 
 # Other miscellaneous files
 *.sqlite3
@@ -53,4 +51,4 @@ coverage/
 *.lock
 
 # Husky
-.husky/_/
+.husky/
