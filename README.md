@@ -79,7 +79,7 @@ Ensure `JACKETT_URL` begins with `http://` or `https://`.
    - Debrid Scout displays detailed torrent info, Real-Debrid caching status, and direct links if cached.
 
 📷 **Sample Search Result**:  
-*(Consider adding a screenshot of search results and caching status for better visualization)*
+![Sample Search Result](https://github.com/anhtdang92/Debrid_Scout/blob/main/app/static/sample_search_result.png)  
 
 ### Example Workflow
 
