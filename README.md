@@ -2,7 +2,6 @@
 # Debrid Scout - Comprehensive Torrent Search & Real-Debrid Integration
 
 ![Debrid Scout Logo](https://github.com/anhtdang92/Debrid_Scout/blob/main/app/static/logo.png)  
-*A clean, sleek logo representing Debrid Scout's purpose*
 
 Debrid Scout is a **Python** application combining **Jackett**'s powerful multi-indexer torrent search with **Real-Debrid** caching and unrestriction. Designed with a user-friendly interface and modular backend, Debrid Scout offers streamlined torrent access and download capabilities, making it the ideal tool for torrent enthusiasts.
 
