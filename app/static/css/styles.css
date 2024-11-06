@@ -1591,3 +1591,92 @@ h3::after {
     font-size: 1.3em;
     text-shadow: 0 0 5px rgba(0, 234, 255, 0.8), 0 0 15px rgba(0, 234, 255, 0.6); /* Subtle neon glow for text */
 }
+
+/* Contact Form Styling */
+.contact-form {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 25px;
+    background-color: #1e1e1e; /* Dark background for contrast */
+    border-radius: 12px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(255, 255, 255, 0.05); /* Inner and outer shadows for depth */
+}
+
+/* Labels */
+.contact-form label {
+    font-size: 1em;
+    font-weight: 600;
+    color: #d0d0d0; /* Soft gray for labels */
+    margin-bottom: 8px;
+}
+
+/* Input Fields */
+.contact-form input[type="text"],
+.contact-form input[type="email"],
+.contact-form textarea {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 20px;
+    background-color: #2e2e2e; /* Darker shade for inputs */
+    border: 2px solid #3a3a3a; /* Soft border */
+    border-radius: 8px;
+    color: #e0e0e0; /* Softer text color */
+    font-size: 1em;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.5); /* Subtle inner shadow for depth */
+}
+
+/* Hover and Focus Effects */
+.contact-form input[type="text"]:hover,
+.contact-form input[type="email"]:hover,
+.contact-form textarea:hover {
+    border-color: #555555;
+}
+
+.contact-form input[type="text"]:focus,
+.contact-form input[type="email"]:focus,
+.contact-form textarea:focus {
+    border-color: #008CBA; /* Cyberpunk blue for focus */
+    background-color: #333333; /* Slightly lighter on focus */
+    box-shadow: 0 0 8px rgba(0, 140, 186, 0.6); /* Glow effect for focus */
+    outline: none;
+}
+
+/* Textarea Styling */
+.contact-form textarea {
+    resize: vertical;
+    min-height: 120px;
+    line-height: 1.6;
+}
+
+/* Submit Button Styling */
+.contact-form .submit-button {
+    padding: 12px 20px;
+    background: linear-gradient(145deg, #009adf, #0079A1); /* Gradient for button */
+    color: #ffffff;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4), inset 0 -2px 4px rgba(255, 255, 255, 0.1); /* Depth for button */
+}
+
+.contact-form .submit-button:hover {
+    background: linear-gradient(145deg, #0079A1, #005f7a); /* Darker on hover */
+    box-shadow: 0 6px 12px rgba(0, 140, 186, 0.5); /* Glow effect */
+    transform: translateY(-2px); /* Lift effect */
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .contact-form {
+        padding: 20px;
+    }
+    .contact-form input[type="text"],
+    .contact-form input[type="email"],
+    .contact-form textarea {
+        padding: 10px;
+        font-size: 0.9em;
+    }
+}
