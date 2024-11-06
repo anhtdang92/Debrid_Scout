@@ -1,8 +1,12 @@
+// app/static/js/scripts.js
+
 // Ensure all modals are hidden on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM fully loaded and parsed.");
 
-    // Close Modal Function
+    /**
+     * Close the RD Modal specifically.
+     */
     window.closeModal = function() {
         console.log("closeModal function called");
         const modal = document.getElementById('rdModal');
@@ -15,7 +19,23 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // Hide all RD modals
+    /**
+     * Close any modal by its ID.
+     * @param {string} modalId - The ID of the modal to close.
+     */
+    window.closeIndexModal = function(modalId) {
+        console.log(`closeIndexModal function called for modal ID: ${modalId}`);
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.style.display = "none";
+            modal.classList.remove('show');
+            console.log(`Modal with ID ${modalId} closed.`);
+        } else {
+            console.error(`Modal element with ID ${modalId} not found in the DOM when attempting to close.`);
+        }
+    };
+
+    // Hide all RD modals on load
     const rdModals = document.querySelectorAll(".rd-modal");
     rdModals.forEach((modal, index) => {
         modal.style.display = "none";
@@ -74,25 +94,48 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Set up close button event listener
+    // Set up close button event listeners for RD Modal
     const closeButton = document.querySelector('.rd-close');
     if (closeButton) {
         closeButton.addEventListener('click', closeModal);
     }
 
+    // Set up close button event listeners for Index Modals
+    const indexCloseButtons = document.querySelectorAll('.rd-close[data-modal-id]');
+    indexCloseButtons.forEach(button => {
+        const modalId = button.getAttribute('data-modal-id');
+        if (modalId) {
+            button.addEventListener('click', function() {
+                closeIndexModal(modalId);
+            });
+        }
+    });
+
     // Close modals when clicking outside of them
     window.addEventListener('click', function(event) {
-        const modal = document.getElementById('rdModal');
-        if (modal && modal.classList.contains('show') && event.target === modal) {
+        // Close RD Modal
+        const rdModal = document.getElementById('rdModal');
+        if (rdModal && rdModal.classList.contains('show') && event.target === rdModal) {
             closeModal();
-            console.log("Clicked outside modal. Modal should close.");
+            console.log("Clicked outside rdModal. Modal should close.");
         }
+
+        // Close Index Modals
+        rdModals.forEach(modal => {
+            if (modal.classList.contains('show') && event.target === modal) {
+                const modalId = modal.id;
+                closeIndexModal(modalId);
+                console.log(`Clicked outside ${modalId}. Modal should close.`);
+            }
+        });
     });
 });
 
 window.videoExtensions = [];
 
-// Function to load video extensions
+/**
+ * Function to load video extensions from a JSON file.
+ */
 function loadVideoExtensions() {
     fetch('/static/video_extensions.json')
     .then(response => {
@@ -109,7 +152,10 @@ function loadVideoExtensions() {
 // Call this function when the page loads
 document.addEventListener("DOMContentLoaded", loadVideoExtensions);
 
-// Function to show a specific RD file modal
+/**
+ * Function to open a specific RD file modal.
+ * @param {number} index - The index of the modal to open.
+ */
 function openFileModal(index) {
     console.log(`openFileModal called for index: ${index}`);
     const modal = document.getElementById("modal-" + index);
@@ -122,7 +168,10 @@ function openFileModal(index) {
     }
 }
 
-// Function to launch VLC without confirmation modal
+/**
+ * Function to launch VLC without confirmation modal.
+ * @param {string} link - The download link to stream in VLC.
+ */
 function launchVLC(link) {
     if (!link || !isValidUrl(link)) {
         alert('Invalid link provided for VLC.');
@@ -155,7 +204,10 @@ function launchVLC(link) {
     });
 }
 
-// Stream in VLC with unrestricted link
+/**
+ * Function to stream in VLC with an unrestricted link.
+ * @param {string} originalLink - The original download link to unrestrict.
+ */
 function streamInVLC(originalLink) {
     fetch('/torrent/unrestrict_link', {
         method: 'POST',
@@ -183,13 +235,19 @@ function streamInVLC(originalLink) {
     });
 }
 
-// Handle errors gracefully
+/**
+ * Function to handle errors gracefully.
+ * @param {string} message - The error message to display.
+ */
 function handleError(message) {
     alert(message);
     console.error(message);
 }
 
-// Show files from a specific torrent
+/**
+ * Function to show files from a specific torrent.
+ * @param {string} torrentId - The ID of the torrent.
+ */
 function showFiles(torrentId) {
     const filesList = document.getElementById('files-list');
     filesList.innerHTML = '<li>Loading files...</li>'; // Show loading message
@@ -243,7 +301,10 @@ function showFiles(torrentId) {
         });
 }
 
-// Delete a single torrent with confirmation
+/**
+ * Function to delete a single torrent with confirmation.
+ * @param {string} torrentId - The ID of the torrent to delete.
+ */
 function deleteTorrent(torrentId) {
     console.log("Attempting to delete torrent with ID:", torrentId); // Log the torrentId
 
@@ -275,6 +336,10 @@ function deleteTorrent(torrentId) {
     }
 }
 
+/**
+ * Function to confirm deletion of a torrent.
+ * @param {string} torrentId - The ID of the torrent to delete.
+ */
 function confirmDeletion(torrentId) {
     const confirmation = confirm("Are you sure you want to delete this torrent?");
     if (confirmation) {
@@ -282,7 +347,9 @@ function confirmDeletion(torrentId) {
     }
 }
 
-// batch delete multiple torrents
+/**
+ * Function to batch delete multiple torrents.
+ */
 function deleteSelectedTorrents() {
     const selectedCheckboxes = document.querySelectorAll(".torrent-checkbox:checked");
 
@@ -316,7 +383,10 @@ function deleteSelectedTorrents() {
     }
 }
 
-// Get an unrestricted download link
+/**
+ * Function to get an unrestricted download link.
+ * @param {string} originalLink - The original download link to unrestrict.
+ */
 function getUnrestrictedLink(originalLink) {
     fetch('/unrestrict_link', {
         method: 'POST',
@@ -344,7 +414,11 @@ function getUnrestrictedLink(originalLink) {
     });
 }
 
-// Validate URL function
+/**
+ * Function to validate a URL.
+ * @param {string} string - The URL string to validate.
+ * @returns {boolean} - Returns true if valid, false otherwise.
+ */
 function isValidUrl(string) {
     try {
         new URL(string);
@@ -354,7 +428,10 @@ function isValidUrl(string) {
     }
 }
 
-// Toggle all torrent checkboxes when Select All is clicked
+/**
+ * Function to toggle all torrent checkboxes when "Select All" is clicked.
+ * @param {HTMLInputElement} selectAllCheckbox - The "Select All" checkbox element.
+ */
 function toggleSelectAll(selectAllCheckbox) {
     const checkboxes = document.querySelectorAll('.torrent-checkbox');
     checkboxes.forEach(checkbox => {
@@ -362,7 +439,10 @@ function toggleSelectAll(selectAllCheckbox) {
     });
 }
 
-// Navigation Loading Overlay
+/**
+ * Navigation Loading Overlay
+ * Displays a loading overlay when navigation links are clicked.
+ */
 document.addEventListener('DOMContentLoaded', function() {
     const navbarLinks = document.querySelectorAll('.navbar a');
     const loadingOverlay = document.getElementById("loading");

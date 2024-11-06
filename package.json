@@ -1,20 +1,58 @@
 {
   "name": "debrid-scout",
   "version": "1.0.3",
-  "description": "A flask webapp that searches torrent with Jackett and check Real-Debrid cached.",
+  "description": "A flask webapp that searches torrent with Jackett and checks Real-Debrid cache.",
   "main": "index.js",
   "scripts": {
-    "commit": "cz",
-    "release": "standard-version"
+    "commit": "git cz",
+    "release": "standard-version",
+    "prepare": "husky install"
   },
   "devDependencies": {
-    "commitizen": "^4.2.4",
+    "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
+    "eslint": "^8.32.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
+    "prettier": "^2.8.8",
     "standard-version": "^9.5.0"
   },
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-conventional-changelog"
     }
-  }
+  },
+  "lint-staged": {
+    "**/*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write",
+      "git add"
+    ],
+    "**/*.json": [
+      "prettier --write",
+      "git add"
+    ],
+    "**/*.css": [
+      "prettier --write",
+      "git add"
+    ]
+  },
+  "keywords": [
+    "flask",
+    "webapp",
+    "torrent",
+    "jackett",
+    "real-debrid",
+    "search"
+  ],
+  "author": "Your Name <your.email@example.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/debrid-scout.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/debrid-scout/issues"
+  },
+  "homepage": "https://github.com/yourusername/debrid-scout#readme"
 }
