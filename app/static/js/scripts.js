@@ -512,4 +512,3 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 });
-// Testing standard-version release process
