@@ -11,7 +11,8 @@
   "devDependencies": {
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
-    "eslint": "^8.32.0",
+    "eslint": "^9.14.0",
+    "globals": "^15.12.0",
     "husky": "^9.1.6",
     "lint-staged": "^15.2.10",
     "prettier": "^2.8.8",
@@ -24,17 +25,14 @@
   },
   "lint-staged": {
     "**/*.{js,jsx,ts,tsx}": [
-      "eslint --fix",
-      "prettier --write",
-      "git add"
+      "eslint --fix --config eslint.config.mjs",
+      "prettier --write"
     ],
     "**/*.json": [
-      "prettier --write",
-      "git add"
+      "prettier --write"
     ],
     "**/*.css": [
-      "prettier --write",
-      "git add"
+      "prettier --write"
     ]
   },
   "keywords": [
