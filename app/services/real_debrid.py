@@ -56,7 +56,7 @@ class RealDebridService:
 
         except requests.RequestException as e:
             logger.error(f"Error fetching account info from Real-Debrid: {e}")
-            raise RealDebridError("Failed to fetch account information. Please check your network and API key.")
+            raise RealDebridError("Failed to fetch Real-Debrid account information. Please check your network and API key.")
         except ValueError as e:
             logger.error(f"JSON processing error for account info: {e}")
             raise RealDebridError("Invalid account data received from Real-Debrid.")

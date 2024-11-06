@@ -16,14 +16,18 @@
             </div>
         </div>
     {% else %}
+        <!-- Display error messages with improved styles and icons, inline layout -->
         <div class="error-message">
+            <i class="fa-solid fa-exclamation-triangle"></i>
+            <span><strong>Error:</strong> 
             {% if not real_debrid_api_key %}
-                <p>Error: Real-Debrid API key is not set. Please configure the API key correctly.</p>
+                Real-Debrid API key is not set. Please configure the API key correctly.
             {% elif real_debrid_api_error %}
-                <p>Error: Failed to fetch Real-Debrid account information. {{ real_debrid_api_error }}</p>
+                {{ real_debrid_api_error }}  <!-- Display the error directly without additional text -->
             {% else %}
-                <p>Unable to fetch account information.</p>
+                Unable to fetch account information.
             {% endif %}
+            </span>
         </div>
     {% endif %}
 </div>

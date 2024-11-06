@@ -1680,3 +1680,56 @@ h3::after {
         font-size: 0.9em;
     }
 }
+
+/* Slim and Inline Message Bar */
+.error-message, .success-message, .info-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: bold;
+    margin: 0 auto;
+    padding: 6px 12px;             /* Small padding for a slim height */
+    width: 100%;                   /* Full-width for bar effect */
+    max-width: 100%;               /* Prevents overflow */
+    border-radius: 6px;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.2);
+    animation: pulseGlow 1.5s infinite;
+    line-height: 1.2;              /* Tighter line height for compactness */
+    box-sizing: border-box;
+}
+
+/* Specific Styles for Error, Success, and Info */
+.error-message {
+    color: #ff5c5c;
+    background-color: rgba(255, 92, 92, 0.15);
+    box-shadow: 0 0 8px rgba(255, 92, 92, 0.4);
+}
+
+.success-message {
+    color: #4CAF50;
+    background-color: rgba(76, 175, 80, 0.15);
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+}
+
+.info-message {
+    color: #2196F3;
+    background-color: rgba(33, 150, 243, 0.15);
+    box-shadow: 0 0 8px rgba(33, 150, 243, 0.4);
+}
+
+/* Icon style */
+.error-message i, .success-message i, .info-message i {
+    font-size: 1.1em;              /* Slightly larger for visibility */
+    display: inline-block;         /* Ensures icon stays inline */
+    vertical-align: middle;        /* Aligns icon with text */
+}
+
+/* Pulsating Glow Animation */
+@keyframes pulseGlow {
+    0%, 100% {
+        box-shadow: 0 0 8px rgba(255, 92, 92, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 12px rgba(255, 92, 92, 0.6);
+    }
+}
