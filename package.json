@@ -4,7 +4,7 @@
   "description": "A flask webapp that searches torrent with Jackett and checks Real-Debrid cache.",
   "main": "index.js",
   "scripts": {
-    "commit": "git cz",
+    "commit": "npx cz",
     "release": "standard-version",
     "prepare": "husky install"
   },
