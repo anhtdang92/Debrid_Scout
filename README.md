@@ -51,12 +51,22 @@ Debrid Scout is a **Python** application combining **Jackett**'s powerful multi-
 
 ## ⚙ Environment Setup
 
-📄 Create a `.env` file in the root directory with the following variables:
-```plaintext
-JACKETT_URL=https://your-jackett-url
-JACKETT_API_KEY=your-jackett-api-key
-REAL_DEBRID_API_KEY=your-real-debrid-api-key
-```
+📄 A template `.env` file is included to simplify setup for new installations. To get started:
+
+1. Copy `.env.template` to `.env`:
+   ```bash
+   cp .env.template .env
+   ```
+
+2. Fill in the required values in the `.env` file:
+   ```plaintext
+   DEBUG_MODE=True
+   FLASK_ENV=development
+   JACKETT_API_KEY=your-jackett_api_key
+   REAL_DEBRID_API_KEY=your-real_debrid_api_key
+   JACKETT_URL=http://localhost:9117
+   ```
+
 Ensure `JACKETT_URL` begins with `http://` or `https://`.
 
 ---

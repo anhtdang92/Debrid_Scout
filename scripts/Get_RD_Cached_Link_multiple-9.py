@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
-
-
 import subprocess
 import os
 import json
@@ -24,13 +21,19 @@ if not REAL_DEBRID_API_KEY:
 # Function to call Jackett Search script
 def call_jackett_vid_search(query: str, limit: int) -> list:
     try:
-        # Command to execute Jackett_Search_v2.py with query and limit using CLI flags
+        # Resolve paths
+        script_path = os.path.abspath("scripts/Jackett_Search_v2.py")
+        python_path = os.path.join(os.environ['VIRTUAL_ENV'], "Scripts", "python")
+
+        # Construct the command
         command = [
-            "python", "scripts/Jackett_Search_v2.py", "--query", query, "--limit", str(limit)
+            python_path,
+            script_path, "--query", query, "--limit", str(limit)
         ]
 
-        # Include environment variables
+        # Include virtual environment variables
         env = os.environ.copy()
+        env["PATH"] = os.path.join(os.environ['VIRTUAL_ENV'], "Scripts") + os.pathsep + env["PATH"]
 
         # Run the command and capture the output
         result = subprocess.run(
@@ -47,10 +50,8 @@ def call_jackett_vid_search(query: str, limit: int) -> list:
             stderr_output = result.stderr.strip()
 
             if output == "[]" and "No results found." in stderr_output:
-                print("No results found.", file=sys.stderr)
                 return []
             elif not output:
-                print("WARNING: Jackett_Search_v2.py returned empty output.", file=sys.stderr)
                 return []
             else:
                 try:
@@ -141,7 +142,6 @@ def main():
         for result in search_results:
             infohash = result.get("infohash")
             if not infohash:
-                print(f"WARNING: Missing infohash in result: {result.get('title', 'No Title')}", file=sys.stderr)
                 continue  # Skip if no infohash
 
             if infohash in processed_infohashes:
@@ -151,7 +151,6 @@ def main():
 
             byte_size = result.get("byte_size")
             if not byte_size:
-                print(f"WARNING: Missing byte_size for infohash {infohash}. Skipping.", file=sys.stderr)
                 continue  # Skip if byte_size is missing
 
             categories = result.get("categories", [])
@@ -180,4 +179,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
