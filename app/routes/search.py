@@ -1,9 +1,13 @@
+# app/routes/search.py
+
 from flask import Blueprint, request, render_template, current_app
 import logging
 import subprocess
 import json
 import sys
 import time
+import tempfile
+import os
 from app.services.file_helper import FileHelper
 from app.services.real_debrid import RealDebridService, RealDebridError
 
@@ -18,7 +22,7 @@ def index():
     stderr = None  # Capture stderr for debugging
     status_messages = ""
     overall_elapsed_time = None
-    script_elapsed_time = None
+    script_times = {}
     account_info = None
     real_debrid_api_error = None
 
@@ -36,7 +40,7 @@ def index():
             real_debrid_api_error = str(e)
             logger.error(f"Failed to fetch account info in DS Search: {e}")
     else:
-        real_debrid_api_error = "Real-Debrid API key is not set. Please configure the API key correctly."
+        real_debrid_api_error = "Real-Debrid API key is not set. Please configure the API key correctly."     
         logger.warning(real_debrid_api_error)
 
     # Handle POST request for search functionality
@@ -55,18 +59,45 @@ def index():
             return render_template('index.html', error=error), 400
 
         try:
-            # Start time measurement for the script execution
+            # Start overall time measurement
             overall_start_time = time.perf_counter()
 
-            # Execute the search script with only query and limit arguments
+            # Create a temporary file to store execution times
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_timefile:
+                temp_timefile_path = temp_timefile.name
+
+            # Execute the search script with query, limit, and --timefile arguments
             result = subprocess.run(
-                [sys.executable, "scripts/Get_RD_Download_Link.py", query, "--limit", limit],
-                capture_output=True, text=True, timeout=300
+                [
+                    sys.executable, 
+                    "scripts/Get_RD_Download_Link.py", 
+                    query, 
+                    "--limit", 
+                    limit, 
+                    "--timefile", 
+                    temp_timefile_path
+                ],
+                capture_output=True, 
+                text=True, 
+                timeout=600  # Adjust timeout as needed
             )
 
-            # Capture stdout and stderr for debugging
+            # Capture stderr for debugging
             stderr = result.stderr.strip()
-            script_elapsed_time = time.perf_counter() - overall_start_time
+
+            # Read execution times from temp file
+            try:
+                with open(temp_timefile_path, 'r') as f:
+                    script_times = json.load(f)
+                logger.info(f"Script times: {script_times}")
+            except Exception as e:
+                logger.error(f"Failed to read execution times from temp file: {e}")
+                script_times = {}
+
+            # Clean up the temporary time file
+            os.unlink(temp_timefile_path)
+
+            # Calculate overall elapsed time
             overall_elapsed_time = time.perf_counter() - overall_start_time
 
             # Parse JSON output if available, or handle empty response
@@ -103,7 +134,7 @@ def index():
         stderr=stderr,  # Include stderr in template for debug visibility
         status_messages=status_messages,
         overall_time=f"{overall_elapsed_time:.2f}" if overall_elapsed_time else None,
-        script_time=f"{script_elapsed_time:.2f}" if script_elapsed_time else None,
+        script_times=script_times,  # Pass the timers dictionary
         account_info=account_info,
         real_debrid_api_error=real_debrid_api_error,
         simplify_filename=FileHelper.simplify_filename

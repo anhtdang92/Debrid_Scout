@@ -1,3 +1,5 @@
+<!-- templates/index.html -->
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -29,7 +31,7 @@
         <div class="container">
             <!-- Logo Section -->
             <div class="logo-container">
-                <img src="{{ url_for('static', filename='logo.png') }}" alt="Debrid Scout Logo" class="logo">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Debrid Scout Logo" class="logo"> 
             </div>
 
             <h2 id="home">Search</h2>
@@ -76,12 +78,33 @@
                 <div class="total-results">
                     Total Torrents Found: {{ data|length }}
                 </div>
-                <!-- Display Processing Time -->
+                
+                <!-- Display Overall Processing Time -->
                 {% if overall_time %}
                     <div class="processing-time">
-                        Processing Time: {{ overall_time }} seconds
+                        <i class="fa-solid fa-clock"></i> Overall Processing Time: {{ overall_time }} seconds
                     </div>
                 {% endif %}
+                
+                <!-- Display Individual Script Execution Times -->
+                {% if script_times %}
+                    <div class="script-times">
+                        <h3>Script Execution Times:</h3>
+                        <ul>
+                            {% for script, time in script_times.items() %}
+                                <li>
+                                    <strong>{{ script }}:</strong> 
+                                    {% if time %}
+                                        {{ time }} seconds
+                                    {% else %}
+                                        <em>Failed to retrieve time</em>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+                
                 <h2 id="search">Results:</h2>
                 <table class="index-table">
                     <colgroup>
@@ -113,7 +136,7 @@
                                     {% set file = torrent['Files'][0] %}
                                     <div>
                                         <div>
-                                            <strong>File:</strong> {{ simplify_filename(file['File Name']) }}
+                                            <strong>File:</strong> {{ simplify_filename(file['File Name']) }} 
                                             <br>
                                             <strong>Size:</strong> {{ file['File Size'] }}
                                         </div>
@@ -127,7 +150,7 @@
                                         </div>
                                     </div>
                                 {% else %}
-                                    <button class="button" onclick="openFileModal('{{ loop.index }}')">
+                                    <button class="button" onclick="openFileModal('{{ loop.index }}')">       
                                         Show Files ({{ torrent['Files']|length }})
                                     </button>
 
@@ -142,11 +165,11 @@
                                                         <div class="file-name">
                                                             <strong>File:</strong> {{ simplify_filename(file['File Name']) }}
                                                             <br>
-                                                            <strong>Size:</strong> {{ file['File Size'] }}
+                                                            <strong>Size:</strong> {{ file['File Size'] }}    
                                                         </div>
                                                         <div class="file-actions">
                                                             <a href="{{ file['Download Link'] }}" class="button" target="_blank">
-                                                                <i class="fa-solid fa-download"></i> Download
+                                                                <i class="fa-solid fa-download"></i> Download 
                                                             </a>
                                                             <button class="button" onclick="launchVLC('{{ file['Download Link'] }}')" style="margin-left: 10px;">
                                                                 <i class="fa-solid fa-play"></i> VLC
