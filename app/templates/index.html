@@ -75,54 +75,7 @@
             {% endif %}
 
             {% if data and data|length > 0 %}
-                <div class="total-results">
-                    Total Torrents Found: {{ data|length }}
-                </div>
-                
-                <!-- Display Overall Processing Time -->
-                {% if overall_time %}
-                    <div class="processing-time">
-                        <i class="fa-solid fa-clock"></i> Overall Processing Time: {{ "%.2f"|format(overall_time) }} seconds
-                    </div>
-                {% endif %}
-                
-                <!-- Display Individual Script Execution Times -->
-                {% if script_times and script_times|length > 0 %}
-                    <div class="script-times">
-                        <h3>Script Execution Times:</h3>
-                        <table class="execution-times-table">
-                            <thead>
-                                <tr>
-                                    <th>Script Name</th>
-                                    <th>Execution Time (seconds)</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for timer in script_times %}
-                                    <tr class="{% if timer.time and timer.time > 30 %}long-running{% endif %}">
-                                        <td>{{ timer.script }}</td>
-                                        <td>
-                                            {% if timer.time %}
-                                                {{ "%.2f"|format(timer.time) }}
-                                            {% else %}
-                                                <em>Failed to retrieve time</em>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if timer.time %}
-                                                <i class="fa-solid fa-check-circle" title="Executed Successfully"></i>
-                                            {% else %}
-                                                <i class="fa-solid fa-times-circle" title="Execution Failed"></i>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% endif %}
-                
+                <!-- Results Table -->
                 <h2 id="search">Results:</h2>
                 <table class="index-table">
                     <colgroup>
@@ -204,6 +157,58 @@
                     {% endfor %}
                     </tbody>
                 </table>
+
+                <!-- Consolidated Timer Section Below the Results Table -->
+                <div class="timer-info">
+                    <!-- Total Torrents Found -->
+                    <div class="total-results">
+                        <i class="fa-solid fa-list"></i> Total Torrents Found: {{ data|length }}
+                    </div>
+                    
+                    <!-- Overall Processing Time -->
+                    {% if overall_time %}
+                        <div class="processing-time">
+                            <i class="fa-solid fa-clock"></i> Overall Processing Time: {{ "%.2f"|format(overall_time) }} seconds
+                        </div>
+                    {% endif %}
+                    
+                    <!-- Script Execution Times -->
+                    {% if script_times and script_times|length > 0 %}
+                        <div class="script-times">
+                            <h3>Script Execution Times:</h3>
+                            <table class="execution-times-table">
+                                <thead>
+                                    <tr>
+                                        <th>Script Name</th>
+                                        <th>Execution Time (seconds)</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for timer in script_times %}
+                                        <tr class="{% if timer.time and timer.time > 30 %}long-running{% endif %}">
+                                            <td>{{ timer.script }}</td>
+                                            <td>
+                                                {% if timer.time %}
+                                                    {{ "%.2f"|format(timer.time) }}
+                                                {% else %}
+                                                    <em>Failed to retrieve time</em>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if timer.time %}
+                                                    <i class="fa-solid fa-check-circle" title="Executed Successfully"></i>
+                                                {% else %}
+                                                    <i class="fa-solid fa-times-circle" title="Execution Failed"></i>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endif %}
+                </div>
             {% endif %}
         </div>
     </div>
