@@ -6,26 +6,36 @@ import os
 import json
 import requests
 import argparse
-from dotenv import load_dotenv
 import sys  # For handling stderr outputs
-import tempfile  # For creating temporary files
+import time
+import tempfile
+import traceback
 
 # Load environment variables from .env file
+from dotenv import load_dotenv
 load_dotenv()
 
-# Get Real-Debrid API key from environment variables
+# Get Real-Debrid API key from environment variables or config
 REAL_DEBRID_API_KEY = os.getenv("REAL_DEBRID_API_KEY")
 if not REAL_DEBRID_API_KEY:
-    print("ERROR: REAL_DEBRID_API_KEY not found. Make sure it's set correctly in the .env file.", file=sys.stderr)
-    sys.exit(1)  # Exit the script if API key is missing
+    # Try to get it from Config if not in environment variables
+    try:
+        from app.config import Config
+        REAL_DEBRID_API_KEY = Config.REAL_DEBRID_API_KEY
+    except ImportError:
+        print("ERROR: REAL_DEBRID_API_KEY not found. Make sure it's set correctly in the .env file or app.config.", file=sys.stderr)
+        sys.exit(1)  # Exit the script if API key is missing
 
 # Function to call Jackett Search script
-def call_jackett_vid_search(query: str, limit: int) -> tuple:
+def call_jackett_vid_search(query: str, limit: int):
     # The function will return a tuple of (results, execution_time)
     try:
-        # Resolve paths
-        script_path = os.path.abspath("scripts/Jackett_Search_v2.py")
-        python_path = os.path.join(os.environ['VIRTUAL_ENV'], "Scripts", "python")
+        # Get the directory of the current script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # Construct the path to Jackett_Search_v2.py within the same directory
+        script_path = os.path.join(script_dir, 'Jackett_Search_v2.py')
+        python_path = sys.executable  # Use the current Python interpreter
 
         # Create a temporary file to store the execution time
         with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_timefile:
@@ -38,9 +48,8 @@ def call_jackett_vid_search(query: str, limit: int) -> tuple:
             "--timefile", temp_timefile_path  # Pass the temp file path
         ]
 
-        # Include virtual environment variables
+        # Include environment variables
         env = os.environ.copy()
-        env["PATH"] = os.path.join(os.environ['VIRTUAL_ENV'], "Scripts") + os.pathsep + env["PATH"]
 
         # Run the command and capture the output
         result = subprocess.run(
@@ -48,8 +57,13 @@ def call_jackett_vid_search(query: str, limit: int) -> tuple:
             capture_output=True,
             text=True,
             env=env,
-            encoding='utf-8'
+            encoding='utf-8',
+            cwd=script_dir  # Set cwd to the directory containing Jackett_Search_v2.py
         )
+
+        # Capture and print any stderr output
+        if result.stderr.strip():
+            print(f"Jackett_Search_v2.py stderr: {result.stderr}", file=sys.stderr)
 
         # Read the execution time from the temp file
         try:
@@ -85,6 +99,7 @@ def call_jackett_vid_search(query: str, limit: int) -> tuple:
             return [], execution_time
     except Exception as e:
         print(f"ERROR: An error occurred while calling Jackett_Search_v2.py: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return [], None
 
 # Function to check if a torrent is fully cached on Real-Debrid
@@ -136,6 +151,7 @@ def check_if_cached_on_real_debrid(infohash: str, expected_size: str) -> dict:
         return result
     except Exception as e:
         print(f"ERROR: An unexpected error occurred while checking cache for {infohash}: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return result
 
 # Main function to search for torrents and check Real-Debrid caching status
@@ -145,55 +161,72 @@ def main():
     )
     parser.add_argument("search_query", type=str, help="The search query for Jackett.")
     parser.add_argument("result_limit", type=int, help="The limit on the number of search results.")
+    parser.add_argument('--timefile', type=str, help='Path to the temp file to write execution time')
     args = parser.parse_args()
 
     search_query = args.search_query
     result_limit = args.result_limit
 
-    # Get the search results from Jackett Search
-    search_results, jackett_execution_time = call_jackett_vid_search(search_query, result_limit)
+    start_time = time.perf_counter()
 
-    if jackett_execution_time is not None:
-        print(f"Jackett_Search_v2.py ran in {jackett_execution_time:.2f} seconds", file=sys.stderr)
+    try:
+        # Get the search results from Jackett Search
+        search_results, jackett_execution_time = call_jackett_vid_search(search_query, result_limit)
 
-    output_results = []
-    processed_infohashes = set()  # To track processed infohashes
+        output_results = []
+        processed_infohashes = set()  # To track processed infohashes
 
-    if search_results:
-        for result in search_results:
-            infohash = result.get("infohash")
-            if not infohash:
-                continue  # Skip if no infohash
+        if search_results:
+            for result in search_results:
+                infohash = result.get("infohash")
+                if not infohash:
+                    continue  # Skip if no infohash
 
-            if infohash in processed_infohashes:
-                continue  # Skip duplicate based on infohash
+                if infohash in processed_infohashes:
+                    continue  # Skip duplicate based on infohash
 
-            processed_infohashes.add(infohash)
+                processed_infohashes.add(infohash)
 
-            byte_size = result.get("byte_size")
-            if not byte_size:
-                continue  # Skip if byte_size is missing
+                byte_size = result.get("byte_size")
+                if not byte_size:
+                    continue  # Skip if byte_size is missing
 
-            categories = result.get("categories", [])
-            title = result.get("title", "No Title")
+                categories = result.get("categories", [])
+                title = result.get("title", "No Title")
 
-            # Check if the torrent is fully cached on Real-Debrid
-            cached_result = check_if_cached_on_real_debrid(infohash, byte_size)
-            cached_result["title"] = title
-            cached_result["categories"] = categories
+                # Check if the torrent is fully cached on Real-Debrid
+                cached_result = check_if_cached_on_real_debrid(infohash, byte_size)
+                cached_result["title"] = title
+                cached_result["categories"] = categories
 
-            # Optionally include additional fields from the search result
-            # For example, seeders, leechers, etc.
-            cached_result["seeders"] = result.get("seeders", "0")
-            cached_result["leechers"] = result.get("leechers", "0")
-            cached_result["size"] = result.get("size", "Unknown")
+                # Optionally include additional fields from the search result
+                # For example, seeders, leechers, etc.
+                cached_result["seeders"] = result.get("seeders", "0")
+                cached_result["leechers"] = result.get("leechers", "0")
+                cached_result["size"] = result.get("size", "Unknown")
 
-            # Optionally include torznab_attributes if needed
-            torznab_attributes = result.get("torznab_attributes", {})
-            if torznab_attributes:
-                cached_result["torznab_attributes"] = torznab_attributes
+                # Optionally include torznab_attributes if needed
+                torznab_attributes = result.get("torznab_attributes", {})
+                if torznab_attributes:
+                    cached_result["torznab_attributes"] = torznab_attributes
 
-            output_results.append(cached_result)
+                output_results.append(cached_result)
+    except Exception as e:
+        print(f"ERROR: An error occurred during execution: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        output_results = []  # Output empty list in case of error
+    finally:
+        end_time = time.perf_counter()
+        duration = end_time - start_time
+        if args.timefile:
+            try:
+                with open(args.timefile, 'w') as f:
+                    f.write(f"{duration}")
+            except Exception as e:
+                print(f"ERROR: Failed to write execution time to {args.timefile}: {e}", file=sys.stderr)
+
+        if jackett_execution_time is not None:
+            print(f"Jackett_Search_v2.py ran in {jackett_execution_time:.2f} seconds", file=sys.stderr)
 
     # Output results as a single JSON
     print(json.dumps(output_results, indent=4))
