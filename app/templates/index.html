@@ -35,17 +35,20 @@
             <h2 id="home">Search</h2>
             <p class="subtitle">Torrent Search with Real-Debrid Cached Status</p>
 
-            <form method="post" id="search-form">
+            <!-- Updated form with autocomplete="off" -->
+            <form method="post" id="search-form" autocomplete="off">
                 <div class="form-group">
                     <label for="query">Search Query:</label>
                     <div class="input-group search-container">
                         <i class="fa-solid fa-magnifying-glass input-group-addon"></i>
-                        <input type="text" id="query" name="query" placeholder="Enter your search term..." required>
+                        <!-- Added autocomplete="off" to the input -->
+                        <input type="text" id="query" name="query" placeholder="Enter your search term..." required autocomplete="off">
                     </div>
                 </div>
                 <div class="form-group">
                     <label for="limit">Limit:</label>
-                    <input type="number" id="limit" name="limit" value="10" min="1" required>
+                    <!-- Added autocomplete="off" to the input -->
+                    <input type="number" id="limit" name="limit" value="10" min="1" required autocomplete="off">
                 </div>
                 <div class="form-group full-width">
                     <button type="submit" class="submit-button" id="submit-button">
