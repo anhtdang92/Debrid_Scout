@@ -1768,40 +1768,63 @@ h3::after {
     padding-bottom: 5px;
 }
 
-.script-times ul {
-    list-style-type: none;
-    padding-left: 0;
+/* Execution Times Table */
+.execution-times-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: #2a2a2a; /* Slightly lighter background for the table */
+    border-radius: 8px;
+    overflow: hidden; /* Ensures rounded corners */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
 }
 
-.script-times li {
-    margin-bottom: 8px;
-    padding: 8px 12px;
-    background-color: #2a2a2a; /* Slightly lighter background for list items */
-    border-radius: 6px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    transition: background-color 0.3s ease;
+.execution-times-table th,
+.execution-times-table td {
+    padding: 10px 15px;
+    text-align: left;
+    border-bottom: 1px solid #3a3a3a; /* Darker border for row separation */
+    color: #d0d0d0; /* Consistent text color */
+    font-size: 1em;
 }
 
-.script-times li:hover {
-    background-color: #3a3a3a; /* Hover effect for interactivity */
-}
-
-.script-times strong {
-    color: #ffffff; /* White text for script names */
+.execution-times-table th {
+    background-color: #1f1f1f; /* Dark header background */
+    color: #5da3fa; /* Cyberpunk blue for header text */
     font-weight: 600;
 }
 
-.script-times em {
+.execution-times-table tbody tr:hover {
+    background-color: #3a3a3a; /* Hover effect for interactivity */
+}
+
+.execution-times-table em {
     color: #ff5c5c; /* Vibrant red for error messages */
     font-style: normal;
     font-weight: 500;
 }
 
+/* Highlight rows for long-running scripts */
+.execution-times-table tbody tr.long-running {
+    background-color: #444444; /* Slightly lighter for emphasis */
+}
+
+.execution-times-table tbody tr.long-running td {
+    color: #ff5c5c; /* Red text to indicate longer times */
+    font-weight: bold;
+}
+
 /* Optional: Icon Styling within Script Times */
-.script-times li i {
+.execution-times-table td i {
     margin-right: 8px;
     color: #5da3fa; /* Consistent icon color */
     font-size: 1.2em;
+}
+
+/* Make the table scrollable on small screens */
+.script-times {
+    overflow-x: auto;
+}
+
+.execution-times-table {
+    min-width: 300px; /* Ensure a minimum width */
 }

@@ -10,6 +10,7 @@ import argparse
 import time
 import tempfile
 import traceback
+import logging
 
 # Add project root to Python path before importing from app.config
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,6 +18,10 @@ project_root = os.path.abspath(os.path.join(script_dir, '..'))
 sys.path.append(project_root)
 
 from app.config import Config  # Import Config to access API key and other settings
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Define the path to the 'video_extensions.json' file relative to the project root
 video_extensions_path = os.path.join(project_root, 'app', 'static', 'video_extensions.json')
@@ -186,7 +191,7 @@ def select_files(torrent_id):
         print(f"Failed to select files for torrent {torrent_id}: {response.text}", file=sys.stderr)
     return False
 
-# Function to retrieve download links from Real-Debrid
+# Function to retrieve torrent info from Real-Debrid
 def get_torrent_info(torrent_id):
     headers = {'Authorization': f'Bearer {Config.REAL_DEBRID_API_KEY}'}
     response = requests.get(
@@ -238,23 +243,25 @@ def main():
     # Print the Python interpreter being used to stderr
     print(f"Main script is using Python interpreter: {sys.executable}", file=sys.stderr)
 
-    start_time = time.perf_counter()
+    # Start overall timer
+    overall_start_time = time.perf_counter()
 
     try:
-        # Retrieve cached links
+        # 1. Call Jackett Search first
+        jackett_results, jackett_time = call_jackett_search(args.search_query, args.limit)
+        if jackett_results is None:
+            jackett_results = []  # Default to empty list if None is returned
+
+        # 2. Call Get RD Cached Link second
         cached_links, get_rd_cached_links_time = get_rd_cached_links(args.search_query, args.limit)
         if cached_links is None:
             cached_links = []  # Default to empty list if None is returned
 
-        # Retrieve Jackett search results
-        jackett_results, jackett_time = call_jackett_search(args.search_query, args.limit)
-        if jackett_results is None:
-            jackett_results = []
-
-        # Prepare the output as JSON
+        # 3. Process final_output
         final_output = []
         processed_torrents = set()  # To avoid duplicate torrents
 
+        # Process cached links
         for cached_link in cached_links:
             torrent_name = cached_link.get('title', 'Unknown Title')
             categories = cached_link.get('categories', [])
@@ -334,25 +341,26 @@ def main():
         final_output = []  # Output empty list in case of error
     finally:
         end_time = time.perf_counter()
-        duration = end_time - start_time
+        duration = end_time - overall_start_time
+
         if args.timefile:
             try:
-                # Aggregate all timers into a dictionary
-                timers = {
-                    "Get_RD_Cached_Link.py": get_rd_cached_links_time,
-                    "Get_RD_Download_Link.py": duration,
-                    "jackett_search_v2.py": jackett_time
-                }
+                # Construct the ordered list of timers
+                timers = [
+                    {"script": "jackett_search_v2.py", "time": jackett_time},
+                    {"script": "Get_RD_Cached_Link.py", "time": get_rd_cached_links_time},
+                    {"script": "Get_RD_Download_Link.py", "time": duration}
+                ]
                 with open(args.timefile, 'w') as f:
                     json.dump(timers, f)
             except Exception as e:
                 print(f"Error: Failed to write execution times to {args.timefile}: {e}", file=sys.stderr)
 
-        # Optionally, log individual script times to stderr
-        if get_rd_cached_links_time is not None:
-            print(f"Get_RD_Cached_Link.py ran in {get_rd_cached_links_time:.2f} seconds", file=sys.stderr)
+        # Log individual script times to stderr
         if jackett_time is not None:
             print(f"jackett_search_v2.py ran in {jackett_time:.2f} seconds", file=sys.stderr)
+        if get_rd_cached_links_time is not None:
+            print(f"Get_RD_Cached_Link.py ran in {get_rd_cached_links_time:.2f} seconds", file=sys.stderr)
         print(f"Get_RD_Download_Link.py ran in {duration:.2f} seconds", file=sys.stderr)
 
     # Print final output as JSON to stdout

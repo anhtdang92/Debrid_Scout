@@ -22,7 +22,7 @@ def index():
     stderr = None  # Capture stderr for debugging
     status_messages = ""
     overall_elapsed_time = None
-    script_times = {}
+    script_times = []  # Change from dict to list to maintain order
     account_info = None
     real_debrid_api_error = None
 
@@ -88,11 +88,11 @@ def index():
             # Read execution times from temp file
             try:
                 with open(temp_timefile_path, 'r') as f:
-                    script_times = json.load(f)
+                    script_times = json.load(f)  # Expecting a list of dicts
                 logger.info(f"Script times: {script_times}")
             except Exception as e:
                 logger.error(f"Failed to read execution times from temp file: {e}")
-                script_times = {}
+                script_times = []
 
             # Clean up the temporary time file
             os.unlink(temp_timefile_path)
@@ -133,8 +133,8 @@ def index():
         error=error,
         stderr=stderr,  # Include stderr in template for debug visibility
         status_messages=status_messages,
-        overall_time=f"{overall_elapsed_time:.2f}" if overall_elapsed_time else None,
-        script_times=script_times,  # Pass the timers dictionary
+        overall_time=overall_elapsed_time if overall_elapsed_time else None,  # Pass as float
+        script_times=script_times,  # Pass the timers list
         account_info=account_info,
         real_debrid_api_error=real_debrid_api_error,
         simplify_filename=FileHelper.simplify_filename

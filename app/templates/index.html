@@ -82,26 +82,44 @@
                 <!-- Display Overall Processing Time -->
                 {% if overall_time %}
                     <div class="processing-time">
-                        <i class="fa-solid fa-clock"></i> Overall Processing Time: {{ overall_time }} seconds
+                        <i class="fa-solid fa-clock"></i> Overall Processing Time: {{ "%.2f"|format(overall_time) }} seconds
                     </div>
                 {% endif %}
                 
                 <!-- Display Individual Script Execution Times -->
-                {% if script_times %}
+                {% if script_times and script_times|length > 0 %}
                     <div class="script-times">
                         <h3>Script Execution Times:</h3>
-                        <ul>
-                            {% for script, time in script_times.items() %}
-                                <li>
-                                    <strong>{{ script }}:</strong> 
-                                    {% if time %}
-                                        {{ time }} seconds
-                                    {% else %}
-                                        <em>Failed to retrieve time</em>
-                                    {% endif %}
-                                </li>
-                            {% endfor %}
-                        </ul>
+                        <table class="execution-times-table">
+                            <thead>
+                                <tr>
+                                    <th>Script Name</th>
+                                    <th>Execution Time (seconds)</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for timer in script_times %}
+                                    <tr class="{% if timer.time and timer.time > 30 %}long-running{% endif %}">
+                                        <td>{{ timer.script }}</td>
+                                        <td>
+                                            {% if timer.time %}
+                                                {{ "%.2f"|format(timer.time) }}
+                                            {% else %}
+                                                <em>Failed to retrieve time</em>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if timer.time %}
+                                                <i class="fa-solid fa-check-circle" title="Executed Successfully"></i>
+                                            {% else %}
+                                                <i class="fa-solid fa-times-circle" title="Execution Failed"></i>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                 {% endif %}
                 
