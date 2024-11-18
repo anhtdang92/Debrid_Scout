@@ -4,7 +4,7 @@ import os
 import requests
 import platform
 import subprocess
-from app.services.real_debrid import RealDebridService
+from app.services.real_debrid import RealDebridService, RealDebridError
 
 torrent_bp = Blueprint('torrent', __name__)
 logger = logging.getLogger(__name__)
@@ -152,7 +152,20 @@ def get_torrent_details(torrent_id):
         selected_files = [file for file in files if file.get('selected') == 1]
         logger.debug(f"Selected files (before sorting): {selected_files}")
 
-        link_mapping = {file['id']: link for file, link in zip(selected_files, links)}
+        # Initialize RealDebridService
+        real_debrid_service = RealDebridService(api_key=REAL_DEBRID_API_KEY)
+
+        # Unrestrict links
+        unrestricted_links = []
+        for link in links:
+            try:
+                unrestricted_link = real_debrid_service.unrestrict_link(link)
+                unrestricted_links.append(unrestricted_link)
+            except RealDebridError as e:
+                logger.error(f"Error unrestricting link '{link}': {e}")
+                unrestricted_links.append(link)  # Fallback to the original link
+
+        link_mapping = {file['id']: link for file, link in zip(selected_files, unrestricted_links)}
 
         sorted_files = sorted(selected_files, key=lambda f: f.get('bytes', 0), reverse=True)
         logger.debug(f"Sorted files by size: {sorted_files}")
