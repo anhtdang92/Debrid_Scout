@@ -18,7 +18,6 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-
 # Import configuration class
 try:
     from app.config import Config
@@ -59,7 +58,7 @@ def create_session():
 
 def extract_infohash_from_magnet(magnet_link: str) -> Optional[str]:
     """Extract the infohash from a magnet link."""
-    match = re.search(r'urn:btih:([A-Fa-f0-9]{40,})', magnet_link)
+    match = re.search(r'urn:btih:([A-Fa-f0-9]{32,40})', magnet_link)
     return match.group(1).lower() if match else None
 
 def load_category_mapping(file_path: str) -> Dict[int, str]:
@@ -164,8 +163,8 @@ def parse_results(xml_data: bytes) -> List[Dict]:
             seeders_elem = item.find('./torznab:attr[@name="seeders"]', TORZNAB_NS)
             seeders = seeders_elem.attrib['value'] if seeders_elem is not None else "0"
 
-            leeches_elem = item.find('./torznab:attr[@name="peers"]', TORZNAB_NS)
-            leeches = leeches_elem.attrib['value'] if leeches_elem is not None else "0"
+            leechers_elem = item.find('./torznab:attr[@name="peers"]', TORZNAB_NS)
+            leechers = leechers_elem.attrib['value'] if leechers_elem is not None else "0"
 
             categories_elems = item.findall('./torznab:attr[@name="category"]', TORZNAB_NS)
             categories = [cat.attrib['value'] for cat in categories_elems]
@@ -202,7 +201,7 @@ def parse_results(xml_data: bytes) -> List[Dict]:
             results.append({
                 'title': title,
                 'seeders': seeders,
-                'leeches': leeches,
+                'leechers': leechers,  # Use 'leechers' here
                 'categories': categories,
                 'infohash': infohash,
                 'size': size,
@@ -232,10 +231,13 @@ def main():
     parser = argparse.ArgumentParser(description='Search Jackett for torrent information.')
     parser.add_argument('--query', type=str, default='alien romulus 2160p', help='Search query')
     parser.add_argument('--limit', type=int, default=10, help='Limit of results')
+    parser.add_argument('--timefile', type=str, help='Path to the temp file to write execution time')
     args = parser.parse_args()
 
     query = args.query
     limit = args.limit
+
+    start_time = time.perf_counter()
 
     try:
         api_key, base_url = load_environment()
@@ -243,7 +245,7 @@ def main():
         # Load category mapping
         static_folder_path = os.path.join(os.path.dirname(__file__), '..', 'app', 'static')
         category_mapping_path = os.path.join(static_folder_path, 'category_mapping.json')
-        
+
         category_mapping = load_category_mapping(category_mapping_path)
 
         xml_data = search_jackett(api_key, base_url, query, limit)
@@ -263,14 +265,14 @@ def main():
                             print(f"WARNING: Unable to convert category '{cat}' to integer.", file=sys.stderr)
 
                     result_data = {
-                        "title": result['title'],
-                        "seeders": result['seeders'],
-                        "leechers": result['leeches'],
+                        "title": result.get('title', 'Unknown Title'),
+                        "seeders": result.get('seeders', '0'),
+                        "leechers": result.get('leechers', '0'),  # Use .get() with default value
                         "categories": category_names,
-                        "infohash": result['infohash'],
-                        "size": bytes_to_human_readable(int(result['size'])),
-                        "byte_size": str(result['size']),
-                        "torznab_attributes": result['torznab_attrs']
+                        "infohash": result.get('infohash'),
+                        "size": bytes_to_human_readable(int(result.get('size', '0'))),
+                        "byte_size": result.get('size', '0'),
+                        "torznab_attributes": result.get('torznab_attrs', {})
                     }
                     output_data.append(result_data)
 
@@ -289,6 +291,17 @@ def main():
         traceback.print_exc(file=sys.stderr)
         print("[]")  # Print empty JSON array to stdout
         sys.exit(1)  # Exit with a non-zero code to indicate failure
+    finally:
+        end_time = time.perf_counter()
+        duration = end_time - start_time
+        if args.timefile:
+            try:
+                with open(args.timefile, 'w') as f:
+                    f.write(f"{duration}")
+            except Exception as e:
+                print(f"ERROR: Failed to write execution time to {args.timefile}: {e}", file=sys.stderr)
+                # Optionally, you can choose to exit with an error code here
+                # sys.exit(1)
 
 if __name__ == "__main__":
     main()

@@ -8,6 +8,7 @@ import requests
 import argparse
 from dotenv import load_dotenv
 import sys  # For handling stderr outputs
+import tempfile  # For creating temporary files
 
 # Load environment variables from .env file
 load_dotenv()
@@ -19,16 +20,22 @@ if not REAL_DEBRID_API_KEY:
     sys.exit(1)  # Exit the script if API key is missing
 
 # Function to call Jackett Search script
-def call_jackett_vid_search(query: str, limit: int) -> list:
+def call_jackett_vid_search(query: str, limit: int) -> tuple:
+    # The function will return a tuple of (results, execution_time)
     try:
         # Resolve paths
         script_path = os.path.abspath("scripts/Jackett_Search_v2.py")
         python_path = os.path.join(os.environ['VIRTUAL_ENV'], "Scripts", "python")
 
+        # Create a temporary file to store the execution time
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_timefile:
+            temp_timefile_path = temp_timefile.name
+
         # Construct the command
         command = [
             python_path,
-            script_path, "--query", query, "--limit", str(limit)
+            script_path, "--query", query, "--limit", str(limit),
+            "--timefile", temp_timefile_path  # Pass the temp file path
         ]
 
         # Include virtual environment variables
@@ -44,30 +51,41 @@ def call_jackett_vid_search(query: str, limit: int) -> list:
             encoding='utf-8'
         )
 
+        # Read the execution time from the temp file
+        try:
+            with open(temp_timefile_path, 'r') as f:
+                execution_time = float(f.read())
+        except Exception as e:
+            print(f"ERROR: Failed to read execution time from temp file: {e}", file=sys.stderr)
+            execution_time = None
+        finally:
+            # Clean up the temp file
+            os.unlink(temp_timefile_path)
+
         # Check if the command was successful
         if result.returncode == 0:
             output = result.stdout.strip()
             stderr_output = result.stderr.strip()
 
             if output == "[]" and "No results found." in stderr_output:
-                return []
+                return [], execution_time
             elif not output:
-                return []
+                return [], execution_time
             else:
                 try:
                     results = json.loads(output)  # Parse JSON output
-                    return results
+                    return results, execution_time
                 except json.JSONDecodeError as e:
                     print(f"JSON decode error in Jackett_Search_v2.py output: {e}", file=sys.stderr)
-                    return []
+                    return [], execution_time
         else:
             print("ERROR: Jackett_Search_v2.py encountered an error.", file=sys.stderr)
             if result.stderr:
                 print(result.stderr, file=sys.stderr)
-            return []
+            return [], execution_time
     except Exception as e:
         print(f"ERROR: An error occurred while calling Jackett_Search_v2.py: {e}", file=sys.stderr)
-        return []
+        return [], None
 
 # Function to check if a torrent is fully cached on Real-Debrid
 def check_if_cached_on_real_debrid(infohash: str, expected_size: str) -> dict:
@@ -133,7 +151,10 @@ def main():
     result_limit = args.result_limit
 
     # Get the search results from Jackett Search
-    search_results = call_jackett_vid_search(search_query, result_limit)
+    search_results, jackett_execution_time = call_jackett_vid_search(search_query, result_limit)
+
+    if jackett_execution_time is not None:
+        print(f"Jackett_Search_v2.py ran in {jackett_execution_time:.2f} seconds", file=sys.stderr)
 
     output_results = []
     processed_infohashes = set()  # To track processed infohashes
