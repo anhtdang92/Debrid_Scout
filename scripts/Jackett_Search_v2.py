@@ -306,8 +306,6 @@ def main():
         # Log the execution time
         print(f"jackett_search_v2.py ran in {duration:.2f} seconds", file=sys.stderr)
 
-    # Print final output as JSON to stdout
-    # (Already handled above)
 
 if __name__ == "__main__":
     main()

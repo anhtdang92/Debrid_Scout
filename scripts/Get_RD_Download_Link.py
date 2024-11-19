@@ -75,13 +75,14 @@ def get_rd_cached_links(query, limit):
         except Exception as e:
             print(f"Error: Failed to read execution time from temp file: {e}", file=sys.stderr)
             execution_time = None
+        finally:
+            # Clean up the temp file
+            os.unlink(temp_timefile_path)
+
     except Exception as e:
         print(f"Error: An error occurred while running {cached_link_script}: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         execution_time = None
-    finally:
-        if os.path.exists(temp_timefile_path):
-            os.unlink(temp_timefile_path)
 
     if result.returncode != 0:
         print(f"Subprocess error: {result.stderr}", file=sys.stderr)
@@ -97,69 +98,6 @@ def get_rd_cached_links(query, limit):
             return results, execution_time  # Return the results and execution time
     except json.JSONDecodeError as e:
         print(f"Error decoding JSON from subprocess: {e}", file=sys.stderr)
-        print(f"Subprocess stdout: {result.stdout}", file=sys.stderr)
-        return [], execution_time
-
-# Function to call the jackett_search_v2.py script
-def call_jackett_search(query, limit):
-    # Construct the path to jackett_search_v2.py
-    jackett_script = os.path.join(script_dir, 'jackett_search_v2.py')
-
-    # Ensure the script exists
-    if not os.path.exists(jackett_script):
-        print(f"Error: Script {jackett_script} not found.", file=sys.stderr)
-        return [], None
-
-    # Create a temporary file to store execution time
-    with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_timefile:
-        temp_timefile_path = temp_timefile.name
-
-    # Prepare environment variables
-    env = os.environ.copy()
-
-    # Run the jackett_search_v2.py subprocess
-    try:
-        result = subprocess.run(
-            [sys.executable, jackett_script, '--query', query, '--limit', str(limit), '--timefile', temp_timefile_path],
-            capture_output=True,
-            text=True,
-            cwd=script_dir,
-            env=env
-        )
-
-        # Capture and print any stderr output
-        if result.stderr.strip():
-            print(f"Subprocess stderr: {result.stderr}", file=sys.stderr)
-
-        # Read execution time from temp file
-        try:
-            with open(temp_timefile_path, 'r') as f:
-                execution_time = float(f.read())
-        except Exception as e:
-            print(f"Error: Failed to read execution time from temp file: {e}", file=sys.stderr)
-            execution_time = None
-    except Exception as e:
-        print(f"Error: An error occurred while running {jackett_script}: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
-        execution_time = None
-    finally:
-        if os.path.exists(temp_timefile_path):
-            os.unlink(temp_timefile_path)
-
-    if result.returncode != 0:
-        print(f"Subprocess error: {result.stderr}", file=sys.stderr)
-        return [], execution_time
-
-    try:
-        output = result.stdout.strip()
-        if not output:
-            print("No results found from Jackett search.", file=sys.stderr)
-            return [], execution_time
-        else:
-            results = json.loads(output)
-            return results, execution_time  # Return the results and execution time
-    except json.JSONDecodeError as e:
-        print(f"Error decoding JSON from Jackett subprocess: {e}", file=sys.stderr)
         print(f"Subprocess stdout: {result.stdout}", file=sys.stderr)
         return [], execution_time
 
@@ -247,93 +185,50 @@ def main():
     overall_start_time = time.perf_counter()
 
     try:
-        # 1. Call Jackett Search first
-        jackett_results, jackett_time = call_jackett_search(args.search_query, args.limit)
-        if jackett_results is None:
-            jackett_results = []  # Default to empty list if None is returned
-
-        # 2. Call Get RD Cached Link second
+        # 1. Call Get RD Cached Link
         cached_links, get_rd_cached_links_time = get_rd_cached_links(args.search_query, args.limit)
         if cached_links is None:
             cached_links = []  # Default to empty list if None is returned
 
-        # 3. Process final_output
+        # 2. Process final_output
         final_output = []
-        processed_torrents = set()  # To avoid duplicate torrents
+        processed_infohashes = set()  # To avoid duplicate torrents
 
-        # Process cached links
-        for cached_link in cached_links:
-            torrent_name = cached_link.get('title', 'Unknown Title')
-            categories = cached_link.get('categories', [])
-            magnet_link = cached_link.get('magnet_link')
-            infohash = cached_link.get('infohash')
+        if cached_links:
+            for cached_link in cached_links:
+                torrent_name = cached_link.get('title', 'Unknown Title')
+                categories = cached_link.get('categories', [])
+                magnet_link = cached_link.get('magnet_link')
+                infohash = cached_link.get('infohash')
 
-            if not magnet_link or infohash in processed_torrents:
-                continue  # Skip if no magnet link or duplicate torrent
+                if not magnet_link or infohash in processed_infohashes:
+                    continue  # Skip if no magnet link or duplicate torrent
 
-            processed_torrents.add(infohash)
+                processed_infohashes.add(infohash)
 
-            # Add magnet to Real-Debrid and select files
-            torrent_id = add_magnet(magnet_link)
-            if torrent_id and select_files(torrent_id):
-                torrent_info = get_torrent_info(torrent_id)
-                unrestricted_download_links = unrestrict_links(torrent_info.get('links', []))
+                # Add magnet to Real-Debrid and select files
+                torrent_id = add_magnet(magnet_link)
+                if torrent_id and select_files(torrent_id):
+                    torrent_info = get_torrent_info(torrent_id)
+                    unrestricted_download_links = unrestrict_links(torrent_info.get('links', []))
 
-                # Group files with video files only
-                torrent_files = []
-                for file_info, unrestricted_link in zip(torrent_info.get('files', []), unrestricted_download_links):
-                    file_name = file_info['path'].lstrip('/')
-                    file_size = format_file_size(file_info['bytes'])
-                    if is_video_file(file_name):
-                        torrent_files.append({
-                            'File Name': file_name,
-                            'File Size': file_size,
-                            'Download Link': unrestricted_link
+                    # Group files with video files only
+                    torrent_files = []
+                    for file_info, unrestricted_link in zip(torrent_info.get('files', []), unrestricted_download_links):
+                        file_name = file_info['path'].lstrip('/')
+                        file_size = format_file_size(file_info['bytes'])
+                        if is_video_file(file_name):
+                            torrent_files.append({
+                                'File Name': file_name,
+                                'File Size': file_size,
+                                'Download Link': unrestricted_link
+                            })
+                    if torrent_files:
+                        final_output.append({
+                            'Torrent Name': torrent_name,
+                            'Categories': categories,
+                            'Files': torrent_files
                         })
-                if torrent_files:
-                    final_output.append({
-                        'Torrent Name': torrent_name,
-                        'Categories': categories,
-                        'Files': torrent_files
-                    })
-
-        # Integrate Jackett results if needed
-        # (Depending on your application's logic, you might want to merge or handle Jackett results separately)
-        for jackett_result in jackett_results:
-            # Example integration (customize as per your requirements)
-            torrent_name = jackett_result.get('title', 'Unknown Title')
-            categories = jackett_result.get('categories', [])
-            magnet_link = jackett_result.get('magnet_link')
-            infohash = jackett_result.get('infohash')
-
-            if not magnet_link or infohash in processed_torrents:
-                continue  # Skip if no magnet link or duplicate torrent
-
-            processed_torrents.add(infohash)
-
-            # Add magnet to Real-Debrid and select files
-            torrent_id = add_magnet(magnet_link)
-            if torrent_id and select_files(torrent_id):
-                torrent_info = get_torrent_info(torrent_id)
-                unrestricted_download_links = unrestrict_links(torrent_info.get('links', []))
-
-                # Group files with video files only
-                torrent_files = []
-                for file_info, unrestricted_link in zip(torrent_info.get('files', []), unrestricted_download_links):
-                    file_name = file_info['path'].lstrip('/')
-                    file_size = format_file_size(file_info['bytes'])
-                    if is_video_file(file_name):
-                        torrent_files.append({
-                            'File Name': file_name,
-                            'File Size': file_size,
-                            'Download Link': unrestricted_link
-                        })
-                if torrent_files:
-                    final_output.append({
-                        'Torrent Name': torrent_name,
-                        'Categories': categories,
-                        'Files': torrent_files
-                    })
 
     except Exception as e:
         print(f"Error: An unexpected error occurred: {e}", file=sys.stderr)
@@ -347,7 +242,6 @@ def main():
             try:
                 # Construct the ordered list of timers
                 timers = [
-                    {"script": "jackett_search_v2.py", "time": jackett_time},
                     {"script": "Get_RD_Cached_Link.py", "time": get_rd_cached_links_time},
                     {"script": "Get_RD_Download_Link.py", "time": duration}
                 ]
@@ -357,8 +251,6 @@ def main():
                 print(f"Error: Failed to write execution times to {args.timefile}: {e}", file=sys.stderr)
 
         # Log individual script times to stderr
-        if jackett_time is not None:
-            print(f"jackett_search_v2.py ran in {jackett_time:.2f} seconds", file=sys.stderr)
         if get_rd_cached_links_time is not None:
             print(f"Get_RD_Cached_Link.py ran in {get_rd_cached_links_time:.2f} seconds", file=sys.stderr)
         print(f"Get_RD_Download_Link.py ran in {duration:.2f} seconds", file=sys.stderr)
