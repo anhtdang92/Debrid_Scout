@@ -182,7 +182,7 @@
                                 </thead>
                                 <tbody>
                                     {% for timer in script_times %}
-                                        <tr class="{% if timer.time and timer.time > 30 %}long-running{% endif %}">
+                                        <tr class="{% if timer.time and timer.time > 120 %}long-running{% endif %}">
                                             <td>{{ timer.script }}</td>
                                             <td>
                                                 {% if timer.time %}
