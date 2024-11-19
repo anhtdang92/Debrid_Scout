@@ -300,7 +300,10 @@ function showFiles(torrentId) {
                                       isVideo
                                           ? `<button class="button" onclick="streamInVLC('${file.link}')">
                                                   <i class="fa-solid fa-play"></i> VLC
-                                             </button>`
+                                             </button>
+                                             <button class="button" onclick="launchHeresphere('${file.link}')">
+                                                  <i class="fa-solid fa-vr-cardboard"></i> HereSphere
+                                              </button>`
                                           : ""
                                   }
                               </div>

@@ -114,6 +114,9 @@
                                             <button class="button" onclick="launchVLC('{{ file['Download Link'] }}');" style="margin-left: 10px;">
                                                 <i class="fa-solid fa-play"></i> VLC
                                             </button>
+                                            <button class="button" onclick="launchHeresphere('{{ file['Download Link'] }}');" style="margin-left: 10px;">
+                                                <i class="fa-solid fa-vr-cardboard"></i> HereSphere
+                                            </button>
                                         </div>
                                     </div>
                                 {% else %}
@@ -128,20 +131,16 @@
                                             <h3>{{ simplify_filename(torrent['Torrent Name']) }}</h3>
                                             <div class="scrollable-content">
                                                 {% for file in torrent['Files'] %}
-                                                    <div class="file-info">
-                                                        <div class="file-name">
-                                                            <strong>File:</strong> {{ simplify_filename(file['File Name']) }}
-                                                            <br>
-                                                            <strong>Size:</strong> {{ file['File Size'] }}    
-                                                        </div>
-                                                        <div class="file-actions">
-                                                            <a href="{{ file['Download Link'] }}" class="button" target="_blank">
-                                                                <i class="fa-solid fa-download"></i> Download 
-                                                            </a>
-                                                            <button class="button" onclick="launchVLC('{{ file['Download Link'] }}')" style="margin-left: 10px;">
-                                                                <i class="fa-solid fa-play"></i> VLC
-                                                            </button>
-                                                        </div>
+                                                    <div class="file-actions">
+                                                        <a href="{{ file['Download Link'] }}" class="button" target="_blank">
+                                                            <i class="fa-solid fa-download"></i> Download
+                                                        </a>
+                                                        <button class="button" onclick="launchVLC('{{ file['Download Link'] }}');" style="margin-left: 10px;">
+                                                            <i class="fa-solid fa-play"></i> VLC
+                                                        </button>
+                                                        <button class="button" onclick="launchHeresphere('{{ file['Download Link'] }}');" style="margin-left: 10px;">
+                                                            <i class="fa-solid fa-vr-cardboard"></i> HereSphere
+                                                        </button>
                                                     </div>
                                                 {% endfor %}
                                             </div>
