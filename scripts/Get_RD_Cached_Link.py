@@ -68,10 +68,10 @@ def call_jackett_vid_search(query: str, limit: int):
         # Read the execution time from the temp file
         try:
             with open(temp_timefile_path, 'r') as f:
-                execution_time = float(f.read())
+                jackett_execution_time = float(f.read())
         except Exception as e:
             print(f"ERROR: Failed to read execution time from temp file: {e}", file=sys.stderr)
-            execution_time = None
+            jackett_execution_time = None
         finally:
             # Clean up the temp file
             os.unlink(temp_timefile_path)
@@ -82,21 +82,21 @@ def call_jackett_vid_search(query: str, limit: int):
             stderr_output = result.stderr.strip()
 
             if output == "[]" and "No results found." in stderr_output:
-                return [], execution_time
+                return [], jackett_execution_time
             elif not output:
-                return [], execution_time
+                return [], jackett_execution_time
             else:
                 try:
                     results = json.loads(output)  # Parse JSON output
-                    return results, execution_time
+                    return results, jackett_execution_time
                 except json.JSONDecodeError as e:
                     print(f"JSON decode error in Jackett_Search_v2.py output: {e}", file=sys.stderr)
-                    return [], execution_time
+                    return [], jackett_execution_time
         else:
             print("ERROR: Jackett_Search_v2.py encountered an error.", file=sys.stderr)
             if result.stderr:
                 print(result.stderr, file=sys.stderr)
-            return [], execution_time
+            return [], jackett_execution_time
     except Exception as e:
         print(f"ERROR: An error occurred while calling Jackett_Search_v2.py: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
@@ -161,7 +161,7 @@ def main():
     )
     parser.add_argument("search_query", type=str, help="The search query for Jackett.")
     parser.add_argument("result_limit", type=int, help="The limit on the number of search results.")
-    parser.add_argument('--timefile', type=str, help='Path to the temp file to write execution time')
+    parser.add_argument('--timefile', type=str, help='Path to the temp file to write execution times')
     args = parser.parse_args()
 
     search_query = args.search_query
@@ -220,10 +220,15 @@ def main():
         duration = end_time - start_time
         if args.timefile:
             try:
+                # Construct the ordered list of timers
+                timers = {
+                    "Get_RD_Cached_Link.py": duration,
+                    "Jackett_Search_v2.py": jackett_execution_time
+                }
                 with open(args.timefile, 'w') as f:
-                    f.write(f"{duration}")
+                    json.dump(timers, f)
             except Exception as e:
-                print(f"ERROR: Failed to write execution time to {args.timefile}: {e}", file=sys.stderr)
+                print(f"ERROR: Failed to write execution times to {args.timefile}: {e}", file=sys.stderr)
 
         if jackett_execution_time is not None:
             print(f"Jackett_Search_v2.py ran in {jackett_execution_time:.2f} seconds", file=sys.stderr)

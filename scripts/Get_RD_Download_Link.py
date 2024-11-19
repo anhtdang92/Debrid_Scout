@@ -45,7 +45,7 @@ def get_rd_cached_links(query, limit):
     # Ensure the path to the script is correct before running
     if not os.path.exists(cached_link_script):
         print(f"Error: Script {cached_link_script} not found.", file=sys.stderr)
-        return [], None
+        return [], {}, None
 
     # Create a temporary file to store execution time
     with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_timefile:
@@ -66,15 +66,18 @@ def get_rd_cached_links(query, limit):
 
         # Capture and print any stderr output
         if result.stderr.strip():
-            print(f"Subprocess stderr: {result.stderr}", file=sys.stderr)
+            print(f"Get_RD_Cached_Link.py stderr: {result.stderr}", file=sys.stderr)
 
-        # Read execution time from temp file
+        # Read execution times from temp file
         try:
             with open(temp_timefile_path, 'r') as f:
-                execution_time = float(f.read())
+                timers = json.load(f)  # Expecting a dict
+                get_rd_cached_links_time = timers.get("Get_RD_Cached_Link.py")
+                jackett_execution_time = timers.get("Jackett_Search_v2.py")
         except Exception as e:
-            print(f"Error: Failed to read execution time from temp file: {e}", file=sys.stderr)
-            execution_time = None
+            print(f"Error: Failed to read execution times from temp file: {e}", file=sys.stderr)
+            get_rd_cached_links_time = None
+            jackett_execution_time = None
         finally:
             # Clean up the temp file
             os.unlink(temp_timefile_path)
@@ -82,24 +85,25 @@ def get_rd_cached_links(query, limit):
     except Exception as e:
         print(f"Error: An error occurred while running {cached_link_script}: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        execution_time = None
+        get_rd_cached_links_time = None
+        jackett_execution_time = None
 
     if result.returncode != 0:
         print(f"Subprocess error: {result.stderr}", file=sys.stderr)
-        return [], execution_time
+        return [], {}, (get_rd_cached_links_time, jackett_execution_time)
 
     try:
         output = result.stdout.strip()
         if not output:
             print("No results found.", file=sys.stderr)
-            return [], execution_time
+            return [], {}, (get_rd_cached_links_time, jackett_execution_time)
         else:
             results = json.loads(output)
-            return results, execution_time  # Return the results and execution time
+            return results, {}, (get_rd_cached_links_time, jackett_execution_time)  # Return the results and execution times
     except json.JSONDecodeError as e:
         print(f"Error decoding JSON from subprocess: {e}", file=sys.stderr)
         print(f"Subprocess stdout: {result.stdout}", file=sys.stderr)
-        return [], execution_time
+        return [], {}, (get_rd_cached_links_time, jackett_execution_time)
 
 # Function to add the magnet link to Real-Debrid
 def add_magnet(magnet_link):
@@ -186,9 +190,11 @@ def main():
 
     try:
         # 1. Call Get RD Cached Link
-        cached_links, get_rd_cached_links_time = get_rd_cached_links(args.search_query, args.limit)
+        cached_links, _, cached_links_times = get_rd_cached_links(args.search_query, args.limit)
         if cached_links is None:
             cached_links = []  # Default to empty list if None is returned
+
+        get_rd_cached_links_time, jackett_execution_time = cached_links_times if cached_links_times else (None, None)
 
         # 2. Process final_output
         final_output = []
@@ -242,6 +248,7 @@ def main():
             try:
                 # Construct the ordered list of timers
                 timers = [
+                    {"script": "Jackett_Search_v2.py", "time": jackett_execution_time},
                     {"script": "Get_RD_Cached_Link.py", "time": get_rd_cached_links_time},
                     {"script": "Get_RD_Download_Link.py", "time": duration}
                 ]
@@ -251,6 +258,8 @@ def main():
                 print(f"Error: Failed to write execution times to {args.timefile}: {e}", file=sys.stderr)
 
         # Log individual script times to stderr
+        if jackett_execution_time is not None:
+            print(f"Jackett_Search_v2.py ran in {jackett_execution_time:.2f} seconds", file=sys.stderr)
         if get_rd_cached_links_time is not None:
             print(f"Get_RD_Cached_Link.py ran in {get_rd_cached_links_time:.2f} seconds", file=sys.stderr)
         print(f"Get_RD_Download_Link.py ran in {duration:.2f} seconds", file=sys.stderr)
