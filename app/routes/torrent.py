@@ -45,7 +45,7 @@ def rd_manager():
 
 @torrent_bp.route('/delete_torrent/<torrent_id>', methods=['DELETE'])
 def delete_torrent(torrent_id):
-    REAL_DEBRID_API_KEY = os.getenv('REAL_DEBRID_API_KEY')
+    REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
     headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
 
     try:
@@ -133,7 +133,7 @@ def unrestrict_link():
 
 @torrent_bp.route('/torrents/<torrent_id>', methods=['GET'])
 def get_torrent_details(torrent_id):
-    REAL_DEBRID_API_KEY = os.getenv('REAL_DEBRID_API_KEY')
+    REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
     headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
 
     try:
