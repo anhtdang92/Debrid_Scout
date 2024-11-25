@@ -27,7 +27,6 @@ class RealDebridService:
         self.headers = {
             'Authorization': f'Bearer {self.api_key}'
         }
-        logger.debug(f"RealDebridService initialized with API key: {self.api_key[:6]}...")
 
     def get_account_info(self) -> Dict[str, Any]:
         """Fetch account information from Real-Debrid."""
