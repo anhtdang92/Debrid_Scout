@@ -20,13 +20,13 @@
         <div class="error-message">
             <i class="fa-solid fa-exclamation-triangle"></i>
             <span><strong>Error:</strong> 
-            {% if not real_debrid_api_key %}
+                {% if not api_key_set %}
                 Real-Debrid API key is not set. Please configure the API key correctly.
             {% elif real_debrid_api_error %}
-                {{ real_debrid_api_error }}  <!-- Display the error directly without additional text -->
+                {{ real_debrid_api_error }}
             {% else %}
                 Unable to fetch account information.
-            {% endif %}
+            {% endif %}            
             </span>
         </div>
     {% endif %}
