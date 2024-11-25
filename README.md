@@ -15,22 +15,6 @@ Debrid Scout is a **Python** application combining **Jackett**'s powerful multi-
 - 📐 **Modular API Structure**: Built with extensibility in mind, Debrid Scout is structured for easy expansion or customization.
 - ⚠️ **Enhanced Error Handling**: Robust logging and error messages for easy troubleshooting.
 - ☁️ **Cloudflare Bypass Support**: Uses `cloudscraper` to overcome Cloudflare challenges on protected indexers.
-
----
-
-## Planned Features
-
-- **Refactor `Get_RD_Download_Link.py` into an Importable Module**
-
-  Currently, `Get_RD_Download_Link.py` is executed via subprocess in `search.py`. The plan is to refactor this script into a module that can be imported and called directly within the Flask application. This will enhance performance and simplify error handling.
-
-- **Implement User Authentication**
-
-  Add user login and registration functionality to allow personalized settings and preferences.
-
-- **Asynchronous Task Handling**
-
-  Introduce Celery or a similar tool to handle long-running tasks asynchronously, improving application responsiveness.
   
 ---
 
