@@ -11,11 +11,11 @@ This roadmap outlines the planned features, improvements, and critical bug fixes
 - **Refactor `Get_RD_Download_Link.py` into an Importable Module** 🔄
   - **Objective:** Convert the script into a module that can be directly imported and called within the Flask application.
   - **Tasks:**
-    - [x] Move `Get_RD_Download_Link.py` into the `services` package.
-    - [x] Refactor the script to expose necessary functions or classes.
-    - [x] Update `search.py` to import and use the new module.
-    - [x] Remove subprocess calls and related error handling.
-    - [x] Test to ensure functionality remains consistent.
+    - [ ] Move `Get_RD_Download_Link.py` into the `services` package.
+    - [ ] Refactor the script to expose necessary functions or classes.
+    - [ ] Update `search.py` to import and use the new module.
+    - [ ] Remove subprocess calls and related error handling.
+    - [ ] Test to ensure functionality remains consistent.
 
 ### 🐞 High-Priority Bug Fixes and Issues
 
