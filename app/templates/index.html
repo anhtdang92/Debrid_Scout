@@ -108,9 +108,9 @@
                                             <strong>Size:</strong> {{ file['File Size'] }}
                                         </div>
                                         <div class="file-actions">
-                                            <a href="{{ file['Download Link'] }}" class="button" target="_blank">
+                                            <button class="button" onclick="window.open('{{ file['Download Link'] }}', '_blank')">
                                                 <i class="fa-solid fa-download"></i> Download
-                                            </a>
+                                            </button>
                                             <button class="button" onclick="launchVLC('{{ file['Download Link'] }}');" style="margin-left: 10px;">
                                                 <i class="fa-solid fa-play"></i> VLC
                                             </button>
@@ -132,9 +132,9 @@
                                             <div class="scrollable-content">
                                                 {% for file in torrent['Files'] %}
                                                     <div class="file-actions">
-                                                        <a href="{{ file['Download Link'] }}" class="button" target="_blank">
+                                                        <button class="button" onclick="window.open('{{ file['Download Link'] }}', '_blank')">
                                                             <i class="fa-solid fa-download"></i> Download
-                                                        </a>
+                                                        </button>
                                                         <button class="button" onclick="launchVLC('{{ file['Download Link'] }}');" style="margin-left: 10px;">
                                                             <i class="fa-solid fa-play"></i> VLC
                                                         </button>

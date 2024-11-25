@@ -288,27 +288,27 @@ function showFiles(torrentId) {
                       );
                       const listItem = document.createElement("li");
                       listItem.innerHTML = `
-                          <div class="file-info">
-                              <div class="file-name">
-                                  <strong>${file.name}</strong> (${file.size})
-                              </div>
-                              <div class="file-actions">
-                                  <a href="${file.link}" class="button" target="_blank">
-                                      <i class="fa-solid fa-download"></i> Download
-                                  </a>
-                                  ${
-                                      isVideo
-                                          ? `<button class="button" onclick="streamInVLC('${file.link}')">
-                                                  <i class="fa-solid fa-play"></i> VLC
-                                             </button>
-                                             <button class="button" onclick="launchHeresphere('${file.link}')">
-                                                  <i class="fa-solid fa-vr-cardboard"></i> HereSphere
-                                              </button>`
-                                          : ""
-                                  }
-                              </div>
-                          </div>
-                      `;
+                        <div class="file-info">
+                            <div class="file-name">
+                                <strong>${file.name}</strong> (${file.size})
+                            </div>
+                            <div class="file-actions">
+                                <button class="button" onclick="window.open('${file.link}', '_blank')">
+                                    <i class="fa-solid fa-download"></i> Download
+                                </button>
+                                ${
+                                    isVideo
+                                        ? `<button class="button" onclick="streamInVLC('${file.link}')">
+                                                <i class="fa-solid fa-play"></i> VLC
+                                          </button>
+                                          <button class="button" onclick="launchHeresphere('${file.link}')">
+                                                <i class="fa-solid fa-vr-cardboard"></i> HereSphere
+                                            </button>`
+                                        : ""
+                                }
+                            </div>
+                        </div>
+                    `;
                       filesList.appendChild(listItem);
                   });
               } else {
