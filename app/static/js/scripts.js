@@ -520,3 +520,27 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 });
+
+function launchHeresphere(videoUrl) {
+  if (!videoUrl) {
+      alert("No video URL provided.");
+      return;
+  }
+
+  fetch('/heresphere/launch_heresphere', {
+      method: 'POST',
+      headers: {
+          'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ video_url: videoUrl }),
+  })
+      .then((response) => response.json())
+      .then((data) => {
+          if (data.message) {
+              alert(data.message);
+          } else if (data.error) {
+              alert(`Error: ${data.error}`);
+          }
+      })
+      .catch((error) => console.error('Error launching HereSphere:', error));
+}
