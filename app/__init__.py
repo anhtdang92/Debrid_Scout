@@ -9,6 +9,7 @@ from .routes.search import search_bp
 from .routes.account import account_bp
 from .routes.torrent import torrent_bp
 from .routes.info import info_bp  # Import the info blueprint
+from .routes.heresphere import heresphere_bp
 
 # Load environment variables here in case it’s not loaded in config.py
 load_dotenv()
@@ -69,7 +70,6 @@ def create_app():
         return {
             "category_icons": category_icons,
             "video_extensions": video_extensions,
-            "real_debrid_api_key": app.config.get("REAL_DEBRID_API_KEY"),
             "jackett_url": app.config.get("JACKETT_URL")
         }
 
@@ -79,5 +79,6 @@ def create_app():
     app.register_blueprint(account_bp, url_prefix='/account')
     app.register_blueprint(torrent_bp, url_prefix='/torrent')
     app.register_blueprint(info_bp)  # No URL prefix for info
+    app.register_blueprint(heresphere_bp, url_prefix='/heresphere')
 
     return app

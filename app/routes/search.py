@@ -2,14 +2,10 @@
 
 from flask import Blueprint, request, render_template, current_app
 import logging
-import subprocess
-import json
-import sys
 import time
-import tempfile
-import os
 from app.services.file_helper import FileHelper
 from app.services.real_debrid import RealDebridService, RealDebridError
+from app.services.rd_download_link import RDDownloadLinkService, RDDownloadLinkError
 
 search_bp = Blueprint('search', __name__)
 logger = logging.getLogger(__name__)
@@ -20,10 +16,9 @@ def index():
     output = ""
     data = None
     error = None
-    stderr = None  # Capture stderr for debugging
     status_messages = ""
     overall_elapsed_time = None
-    script_times_data = []  # Initialize as empty list to handle GET requests
+    script_times_data = []
     account_info = None
     real_debrid_api_error = None
 
@@ -33,7 +28,6 @@ def index():
     # Initialize RealDebridService if API key is available
     if REAL_DEBRID_API_KEY:
         try:
-            # Instantiate the service to fetch account information
             real_debrid_service = RealDebridService(api_key=REAL_DEBRID_API_KEY)
             account_info = real_debrid_service.get_account_info()
             logger.info("Successfully retrieved account information in DS Search.")
@@ -65,68 +59,23 @@ def index():
             # Start overall time measurement
             overall_start_time = time.perf_counter()
 
-            # Create a temporary file to store execution times
-            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_timefile:
-                temp_timefile_path = temp_timefile.name
+            # Run the search pipeline directly (no subprocess)
+            download_service = RDDownloadLinkService(api_key=REAL_DEBRID_API_KEY)
+            result = download_service.search_and_get_links(query, int(limit))
 
-            # Execute the search script with query, limit, and --timefile arguments
-            result = subprocess.run(
-                [
-                    sys.executable, 
-                    "scripts/Get_RD_Download_Link.py", 
-                    query, 
-                    "--limit", 
-                    limit, 
-                    "--timefile", 
-                    temp_timefile_path
-                ],
-                capture_output=True, 
-                text=True, 
-                timeout=600  # Adjust timeout as needed
-            )
-
-            # Capture stderr for debugging
-            stderr = result.stderr.strip()
-
-            # Read execution times from temp file
-            try:
-                with open(temp_timefile_path, 'r') as f:
-                    script_times_data = json.load(f)  # Expecting a list of dicts
-                logger.info(f"Script times: {script_times_data}")
-            except Exception as e:
-                logger.error(f"Failed to read execution times from temp file: {e}")
-                script_times_data = []
-
-            # Clean up the temporary time file
-            try:
-                os.unlink(temp_timefile_path)
-            except Exception as e:
-                logger.warning(f"Failed to delete temp timefile {temp_timefile_path}: {e}")
+            data = result.get("data")
+            script_times_data = result.get("timers", [])
 
             # Calculate overall elapsed time
             overall_elapsed_time = time.perf_counter() - overall_start_time
 
-            # Parse JSON output if available, or handle empty response
-            if result.returncode == 0:
-                if result.stdout.strip():
-                    try:
-                        data = json.loads(result.stdout)
-                        if not data:  # Handle empty result set
-                            error = "No Results Found."
-                            logger.info("No results returned from search script.")
-                    except json.JSONDecodeError as e:
-                        error = "Error parsing JSON data from search script."
-                        logger.error(f"JSON decode error: {e}")
-                else:
-                    error = "No Results Found."
-                    logger.info("Search script returned an empty response.")
-            else:
-                error = "Command failed."
-                logger.error(f"Error during search subprocess: {stderr}")
+            if not data:
+                error = "No Results Found."
+                logger.info("No results returned from search pipeline.")
 
-        except subprocess.TimeoutExpired:
-            error = "The search operation timed out."
-            logger.error("Search operation timed out.")
+        except (RDDownloadLinkError, RealDebridError) as e:
+            error = f"Service error: {e}"
+            logger.error(f"Service error during search: {e}")
         except Exception as e:
             error = f"An error occurred: {e}"
             logger.exception("Unexpected error during search operation.")
@@ -137,10 +86,9 @@ def index():
         output=output,
         data=data,
         error=error,
-        stderr=stderr,  # Include stderr in template for debug visibility
         status_messages=status_messages,
-        overall_time=overall_elapsed_time if overall_elapsed_time else None,  # Pass as float
-        script_times=script_times_data,  # Pass the timers list
+        overall_time=overall_elapsed_time if overall_elapsed_time else None,
+        script_times=script_times_data,
         account_info=account_info,
         real_debrid_api_error=real_debrid_api_error,
         simplify_filename=FileHelper.simplify_filename

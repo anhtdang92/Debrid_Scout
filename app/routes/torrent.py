@@ -36,7 +36,6 @@ def rd_manager():
     return render_template(
         'rd_manager.html',
         account_info=account_info,
-        real_debrid_api_key=REAL_DEBRID_API_KEY,
         real_debrid_api_error=real_debrid_api_error,
         torrents=torrents,
         current_page=page,
