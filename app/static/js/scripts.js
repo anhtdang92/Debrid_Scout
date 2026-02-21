@@ -1,93 +1,50 @@
 // app/static/js/scripts.js
 
-// Ensure all modals are hidden on page load
+// ──────────────────────────────────────────────────────────────
+// DOMContentLoaded — main initialisation
+// ──────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", function () {
   console.log("DOM fully loaded and parsed.");
 
-  /**
-   * Close the RD Modal specifically.
-   */
+  // ── Modal helpers (exposed globally for legacy close-button support) ──
   window.closeModal = function () {
-    console.log("closeModal function called");
     const modal = document.getElementById("rdModal");
     if (modal) {
       modal.style.display = "none";
       modal.classList.remove("show");
-      console.log("Modal closed");
-    } else {
-      console.error(
-        "Modal element not found in the DOM when attempting to close."
-      );
     }
   };
 
-  /**
-   * Close any modal by its ID.
-   * @param {string} modalId - The ID of the modal to close.
-   */
   window.closeIndexModal = function (modalId) {
-    console.log(`closeIndexModal function called for modal ID: ${modalId}`);
     const modal = document.getElementById(modalId);
     if (modal) {
       modal.style.display = "none";
       modal.classList.remove("show");
-      console.log(`Modal with ID ${modalId} closed.`);
-    } else {
-      console.error(
-        `Modal element with ID ${modalId} not found in the DOM when attempting to close.`
-      );
     }
   };
 
-  // Hide all RD modals on load
-  const rdModals = document.querySelectorAll(".rd-modal");
-  rdModals.forEach((modal, index) => {
+  // Hide all modals on page load
+  document.querySelectorAll(".rd-modal").forEach(function (modal) {
     modal.style.display = "none";
-    console.log(`RD modal ${index + 1} is hidden on load.`);
   });
 
-  // Loading overlay for form submission
+  // ── Search form — normal POST with loading overlay ──────────
+  // FIX: removed the old fetch() + document.write() approach that
+  // destroyed the entire DOM.  We now let the browser POST the form
+  // normally and just show a spinner during navigation.
   const searchForm = document.getElementById("search-form");
   const loadingOverlay = document.getElementById("loading");
 
-  if (searchForm) {
-    searchForm.addEventListener("submit", function (event) {
-      event.preventDefault(); // Prevent default submission for custom handling
-      loadingOverlay.style.display = "flex"; // Show loading overlay
-
-      const formData = new FormData(searchForm);
-      const query = formData.get("query");
-      const limit = formData.get("limit");
-
-      fetch("/", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ query, limit }),
-      })
-        .then((response) => {
-          if (!response.ok) {
-            return response.text().then((text) => {
-              throw new Error(text || "Network response was not ok");
-            });
-          }
-          return response.text(); // Expecting HTML response for document.write
-        })
-        .then((data) => {
-          document.open();
-          document.write(data);
-          document.close();
-        })
-        .catch((error) => {
-          console.error("Error:", error);
-          alert("An error occurred: " + error.message);
-        })
-        .finally(() => {
-          loadingOverlay.style.display = "none"; // Hide loading overlay
-        });
+  if (searchForm && loadingOverlay) {
+    searchForm.addEventListener("submit", function () {
+      // Show the loading overlay; the browser will navigate away,
+      // so we don't need to hide it – the new page load resets it.
+      loadingOverlay.style.display = "flex";
+      // Do NOT call event.preventDefault() — we want the real POST.
     });
   }
 
-  // Enable form submission with Enter key, if search form exists
+  // Enter-key support (mirrors submit-button click)
   const submitButton = document.getElementById("submit-button");
   if (searchForm && submitButton) {
     searchForm.addEventListener("keydown", function (event) {
@@ -98,385 +55,399 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Set up close button event listeners for RD Modal
-  const closeButton = document.querySelector(".rd-close");
-  if (closeButton) {
-    closeButton.addEventListener("click", closeModal);
-  }
-
-  // Set up close button event listeners for Index Modals
-  const indexCloseButtons = document.querySelectorAll(
-    ".rd-close[data-modal-id]"
-  );
-  indexCloseButtons.forEach((button) => {
-    const modalId = button.getAttribute("data-modal-id");
-    if (modalId) {
-      button.addEventListener("click", function () {
-        closeIndexModal(modalId);
-      });
-    }
-  });
-
-  // Close modals when clicking outside of them
+  // ── Close modals on outside click ───────────────────────────
   window.addEventListener("click", function (event) {
-    // Close RD Modal
     const rdModal = document.getElementById("rdModal");
-    if (
-      rdModal &&
-      rdModal.classList.contains("show") &&
-      event.target === rdModal
-    ) {
+    if (rdModal && rdModal.classList.contains("show") && event.target === rdModal) {
       closeModal();
-      console.log("Clicked outside rdModal. Modal should close.");
     }
-
-    // Close Index Modals
-    rdModals.forEach((modal) => {
+    document.querySelectorAll(".rd-modal").forEach(function (modal) {
       if (modal.classList.contains("show") && event.target === modal) {
-        const modalId = modal.id;
-        closeIndexModal(modalId);
-        console.log(`Clicked outside ${modalId}. Modal should close.`);
+        closeIndexModal(modal.id);
       }
     });
   });
+
+  // ── Navigation loading overlay ──────────────────────────────
+  document.querySelectorAll(".navbar a").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      if (loadingOverlay) loadingOverlay.style.display = "flex";
+      event.preventDefault();
+      var href = this.href;
+      setTimeout(function () {
+        window.location.href = href;
+      }, 300);
+    });
+  });
+
+  // ── Centralised event delegation for [data-action] buttons ──
+  // This replaces ALL inline onclick="" handlers across templates,
+  // removing XSS risk from user-controlled data (download links, IDs).
+  document.addEventListener("click", function (event) {
+    var btn = event.target.closest("[data-action]");
+    if (!btn) return;
+
+    var action = btn.getAttribute("data-action");
+    var url = btn.getAttribute("data-url") || "";
+    var id = btn.getAttribute("data-id") || "";
+
+    switch (action) {
+      case "download":
+        if (url && isValidUrl(url)) window.open(url, "_blank");
+        break;
+
+      case "vlc":
+        launchVLC(url);
+        break;
+
+      case "heresphere":
+        launchHeresphere(url);
+        break;
+
+      case "open-file-modal":
+        openFileModal(id);
+        break;
+
+      case "close-modal":
+        closeIndexModal(id);
+        break;
+
+      case "show-files":
+        showFiles(id);
+        break;
+
+      case "confirm-delete":
+        confirmDeletion(id);
+        break;
+
+      case "delete-selected":
+        deleteSelectedTorrents();
+        break;
+
+      case "toggle-select-all":
+        // The btn IS the checkbox input itself
+        toggleSelectAll(btn);
+        break;
+
+      default:
+        console.warn("Unknown data-action:", action);
+    }
+  });
 });
 
+// ──────────────────────────────────────────────────────────────
+// Video extensions (loaded once on startup)
+// ──────────────────────────────────────────────────────────────
 window.videoExtensions = [];
 
-/**
- * Function to load video extensions from a JSON file.
- */
 function loadVideoExtensions() {
   fetch("/static/video_extensions.json")
-    .then((response) => {
+    .then(function (response) {
       if (!response.ok) throw new Error("Failed to load video extensions");
       return response.json();
     })
-    .then((data) => {
+    .then(function (data) {
       window.videoExtensions = data.video_extensions;
-      console.log("Video extensions loaded:", window.videoExtensions);
     })
-    .catch((error) => console.error("Error loading video extensions:", error));
+    .catch(function (error) {
+      console.error("Error loading video extensions:", error);
+    });
 }
-
-// Call this function when the page loads
 document.addEventListener("DOMContentLoaded", loadVideoExtensions);
 
-/**
- * Function to open a specific RD file modal.
- * @param {number} index - The index of the modal to open.
- */
+// ──────────────────────────────────────────────────────────────
+// Modal helpers
+// ──────────────────────────────────────────────────────────────
 function openFileModal(index) {
-  console.log(`openFileModal called for index: ${index}`);
-  const modal = document.getElementById("modal-" + index);
+  var modal = document.getElementById("modal-" + index);
   if (modal) {
     modal.style.display = "flex";
     modal.classList.add("show");
-    console.log(`RD modal modal-${index} is now displayed.`);
-  } else {
-    console.error(`RD modal with id modal-${index} not found.`);
   }
 }
 
-/**
- * Function to launch VLC without confirmation modal.
- * @param {string} link - The download link to stream in VLC.
- */
+// ──────────────────────────────────────────────────────────────
+// VLC streaming
+// ──────────────────────────────────────────────────────────────
 function launchVLC(link) {
   if (!link || !isValidUrl(link)) {
     alert("Invalid link provided for VLC.");
     return;
   }
-
-  console.log(`launchVLC called with link: ${link}`);
   fetch("/torrent/stream_vlc", {
-    // Updated endpoint with /torrent prefix
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ link: link }),
   })
-    .then((response) => {
+    .then(function (response) {
       if (!response.ok) {
-        return response.json().then((data) => {
+        return response.json().then(function (data) {
           throw new Error(data.message || "Failed to launch VLC.");
         });
       }
       return response.json();
     })
-    .then((data) => {
+    .then(function (data) {
       if (data.status !== "success") {
         alert("Failed to launch VLC. Please try again later.");
-        console.error("Error launching VLC:", data.message);
       }
     })
-    .catch((error) => {
-      console.error("Error launching VLC: ", error);
-      alert(
-        "An unexpected error occurred while launching VLC: " + error.message
-      );
+    .catch(function (error) {
+      alert("Error launching VLC: " + error.message);
     });
 }
 
-/**
- * Function to stream in VLC with an unrestricted link.
- * @param {string} originalLink - The original download link to unrestrict.
- */
 function streamInVLC(originalLink) {
   fetch("/torrent/unrestrict_link", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ link: originalLink }),
   })
-    .then((response) => {
+    .then(function (response) {
       if (!response.ok) {
-        return response.json().then((data) => {
+        return response.json().then(function (data) {
           throw new Error(data.error || "Failed to fetch unrestricted link.");
         });
       }
       return response.json();
     })
-    .then((data) => {
+    .then(function (data) {
       if (data.unrestricted_link) {
         launchVLC(data.unrestricted_link);
       } else {
         alert("Failed to get unrestricted link for streaming.");
       }
     })
-    .catch((error) => {
-      console.error("Error fetching unrestricted link:", error);
-      alert(
-        "An error occurred while preparing to stream in VLC: " + error.message
-      );
+    .catch(function (error) {
+      alert("Error preparing to stream in VLC: " + error.message);
     });
 }
 
-/**
- * Function to handle errors gracefully.
- * @param {string} message - The error message to display.
- */
-function handleError(message) {
-  alert(message);
-  console.error(message);
+// ──────────────────────────────────────────────────────────────
+// HereSphere
+// ──────────────────────────────────────────────────────────────
+function launchHeresphere(videoUrl) {
+  if (!videoUrl) {
+    alert("No video URL provided.");
+    return;
+  }
+  fetch("/heresphere/launch_heresphere", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ video_url: videoUrl }),
+  })
+    .then(function (response) { return response.json(); })
+    .then(function (data) {
+      if (data.message) alert(data.message);
+      else if (data.error) alert("Error: " + data.error);
+    })
+    .catch(function (error) {
+      console.error("Error launching HereSphere:", error);
+    });
 }
 
-/**
- * Function to show files from a specific torrent.
- * @param {string} torrentId - The ID of the torrent.
- */
+// ──────────────────────────────────────────────────────────────
+// Show files in RD Manager modal (XSS-safe DOM construction)
+// ──────────────────────────────────────────────────────────────
 function showFiles(torrentId) {
-  const filesList = document.getElementById("files-list");
-  filesList.innerHTML = "<li>Loading files...</li>"; // Show loading message
-  console.log("Fetching files for torrent ID:", torrentId);
+  var filesList = document.getElementById("files-list");
+  filesList.innerHTML = "";
+  var li = document.createElement("li");
+  li.textContent = "Loading files...";
+  filesList.appendChild(li);
 
-  fetch(`/torrent/torrents/${encodeURIComponent(torrentId)}`)
-      .then((response) => {
-          if (!response.ok) {
-              throw new Error("Network response was not ok");
-          }
-          return response.json();
-      })
-      .then((data) => {
-          console.log("Data received from server for torrent ID:", torrentId, data);
-          filesList.innerHTML = "";
+  fetch("/torrent/torrents/" + encodeURIComponent(torrentId))
+    .then(function (response) {
+      if (!response.ok) throw new Error("Network response was not ok");
+      return response.json();
+    })
+    .then(function (data) {
+      filesList.innerHTML = "";
 
-          if (Array.isArray(data.files)) {
-              const validFiles = data.files.filter((file) => file.size !== "0.00 GB");
-              if (validFiles.length > 0) {
-                  validFiles.forEach((file) => {
-                      const isVideo = window.videoExtensions.some((ext) =>
-                          file.name.toLowerCase().endsWith(ext)
-                      );
-                      const listItem = document.createElement("li");
-                      listItem.innerHTML = `
-                        <div class="file-info">
-                            <div class="file-name">
-                                <strong>${file.name}</strong> (${file.size})
-                            </div>
-                            <div class="file-actions">
-                                <button class="button" onclick="window.open('${file.link}', '_blank')">
-                                    <i class="fa-solid fa-download"></i> Download
-                                </button>
-                                ${
-                                    isVideo
-                                        ? `<button class="button" onclick="streamInVLC('${file.link}')">
-                                                <i class="fa-solid fa-play"></i> VLC
-                                          </button>
-                                          <button class="button" onclick="launchHeresphere('${file.link}')">
-                                                <i class="fa-solid fa-vr-cardboard"></i> HereSphere
-                                            </button>`
-                                        : ""
-                                }
-                            </div>
-                        </div>
-                    `;
-                      filesList.appendChild(listItem);
-                  });
-              } else {
-                  filesList.innerHTML = "<li><strong>No valid files available for this torrent.</strong></li>";
-              }
-          } else {
-              filesList.innerHTML = "<li><strong>Error: No files data found.</strong></li>";
-          }
+      if (!Array.isArray(data.files)) {
+        filesList.innerHTML = "<li><strong>Error: No files data found.</strong></li>";
+        return;
+      }
 
-          const modalTitle = document.getElementById("modal-files-title");
-          if (modalTitle) {
-              modalTitle.innerText = data.filename || "Unknown Torrent";
-          }
+      var validFiles = data.files.filter(function (f) { return f.size !== "0.00 GB"; });
+      if (validFiles.length === 0) {
+        filesList.innerHTML = "<li><strong>No valid files available for this torrent.</strong></li>";
+        return;
+      }
 
-          const modal = document.getElementById("rdModal");
-          if (modal) {
-              modal.style.display = "flex";
-              modal.classList.add("show");
-          }
-      })
-      .catch((error) => {
-          filesList.innerHTML = "<li><strong>Error loading files. Please try again.</strong></li>";
-          console.error("Error fetching torrent files:", error);
+      validFiles.forEach(function (file) {
+        var isVideo = window.videoExtensions.some(function (ext) {
+          return file.name.toLowerCase().endsWith(ext);
+        });
+
+        var listItem = document.createElement("li");
+        var fileInfo = document.createElement("div");
+        fileInfo.className = "file-info";
+
+        // File name + size (safe text)
+        var fileName = document.createElement("div");
+        fileName.className = "file-name";
+        var strong = document.createElement("strong");
+        strong.textContent = file.name;
+        fileName.appendChild(strong);
+        fileName.appendChild(document.createTextNode(" (" + file.size + ")"));
+        fileInfo.appendChild(fileName);
+
+        // Action buttons
+        var actions = document.createElement("div");
+        actions.className = "file-actions";
+
+        // Download button
+        var dlBtn = document.createElement("button");
+        dlBtn.className = "button";
+        dlBtn.setAttribute("data-action", "download");
+        dlBtn.setAttribute("data-url", file.link);
+        dlBtn.innerHTML = '<i class="fa-solid fa-download"></i> Download';
+        actions.appendChild(dlBtn);
+
+        if (isVideo) {
+          // VLC button
+          var vlcBtn = document.createElement("button");
+          vlcBtn.className = "button";
+          vlcBtn.setAttribute("data-action", "vlc");
+          vlcBtn.setAttribute("data-url", file.link);
+          vlcBtn.innerHTML = '<i class="fa-solid fa-play"></i> VLC';
+          vlcBtn.style.marginLeft = "10px";
+          actions.appendChild(vlcBtn);
+
+          // HereSphere button
+          var hsBtn = document.createElement("button");
+          hsBtn.className = "button";
+          hsBtn.setAttribute("data-action", "heresphere");
+          hsBtn.setAttribute("data-url", file.link);
+          hsBtn.innerHTML = '<i class="fa-solid fa-vr-cardboard"></i> HereSphere';
+          hsBtn.style.marginLeft = "10px";
+          actions.appendChild(hsBtn);
+        }
+
+        fileInfo.appendChild(actions);
+        listItem.appendChild(fileInfo);
+        filesList.appendChild(listItem);
       });
+
+      var modalTitle = document.getElementById("modal-files-title");
+      if (modalTitle) modalTitle.textContent = data.filename || "Unknown Torrent";
+
+      var modal = document.getElementById("rdModal");
+      if (modal) {
+        modal.style.display = "flex";
+        modal.classList.add("show");
+      }
+    })
+    .catch(function (error) {
+      filesList.innerHTML = "<li><strong>Error loading files. Please try again.</strong></li>";
+      console.error("Error fetching torrent files:", error);
+    });
 }
 
-/**
- * Function to delete a single torrent with confirmation.
- * @param {string} torrentId - The ID of the torrent to delete.
- */
+// ──────────────────────────────────────────────────────────────
+// Torrent deletion
+// ──────────────────────────────────────────────────────────────
 function deleteTorrent(torrentId) {
-  console.log("Attempting to delete torrent with ID:", torrentId); // Log the torrentId
-
   if (!torrentId || typeof torrentId !== "string") {
     alert("Invalid torrent ID provided.");
     return;
   }
 
-  if (
-    confirm(
-      "Are you sure you want to delete this torrent? This action cannot be undone."
-    )
-  ) {
-    fetch(`/torrent/delete_torrent/${encodeURIComponent(torrentId)}`, {
-      method: "DELETE",
-    }) // Updated endpoint
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status} - ${response.statusText}`);
-        }
-        return response.json();
-      })
-      .then((data) => {
-        if (data.status === "success") {
-          alert("Torrent deleted successfully!");
-          location.reload();
-        } else {
-          alert("Failed to delete the torrent: " + data.message);
-        }
-      })
-      .catch((error) => {
-        console.error("Error deleting torrent:", error);
-        alert(
-          "An error occurred while trying to delete the torrent: " +
-            error.message
-        );
-      });
-  }
+  fetch("/torrent/delete_torrent/" + encodeURIComponent(torrentId), {
+    method: "DELETE",
+  })
+    .then(function (response) {
+      if (!response.ok) throw new Error("Error: " + response.status);
+      return response.json();
+    })
+    .then(function (data) {
+      if (data.status === "success") {
+        alert("Torrent deleted successfully!");
+        location.reload();
+      } else {
+        alert("Failed to delete the torrent: " + data.message);
+      }
+    })
+    .catch(function (error) {
+      alert("Error deleting torrent: " + error.message);
+    });
 }
 
-/**
- * Function to confirm deletion of a torrent.
- * @param {string} torrentId - The ID of the torrent to delete.
- */
 function confirmDeletion(torrentId) {
-  const confirmation = confirm("Are you sure you want to delete this torrent?");
-  if (confirmation) {
+  if (confirm("Are you sure you want to delete this torrent? This action cannot be undone.")) {
     deleteTorrent(torrentId);
   }
 }
 
-/**
- * Function to batch delete multiple torrents.
- */
 function deleteSelectedTorrents() {
-  const selectedCheckboxes = document.querySelectorAll(
-    ".torrent-checkbox:checked"
-  );
+  var selectedCheckboxes = document.querySelectorAll(".torrent-checkbox:checked");
 
   if (selectedCheckboxes.length === 0) {
     alert("Please select at least one torrent to delete.");
     return;
   }
 
-  if (
-    confirm(
-      `Are you sure you want to delete the selected ${selectedCheckboxes.length} torrent(s)?`
-    )
-  ) {
-    const torrentIds = Array.from(selectedCheckboxes).map(
-      (checkbox) => checkbox.value
-    );
-
-    fetch(`/torrent/delete_torrents`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ torrentIds }),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error("Failed to delete selected torrents");
-        return response.json();
-      })
-      .then((data) => {
-        if (data.status === "success") {
-          alert("Selected torrents have been deleted successfully.");
-        } else if (data.status === "partial_success") {
-          alert("Some torrents could not be deleted.");
-          console.log("Partial deletion results:", data.results);
-        }
-        location.reload();
-      })
-      .catch((error) =>
-        console.error("Error deleting selected torrents:", error)
-      );
+  if (!confirm("Are you sure you want to delete the selected " + selectedCheckboxes.length + " torrent(s)?")) {
+    return;
   }
+
+  var torrentIds = Array.from(selectedCheckboxes).map(function (cb) { return cb.value; });
+
+  fetch("/torrent/delete_torrents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ torrentIds: torrentIds }),
+  })
+    .then(function (response) {
+      if (!response.ok) throw new Error("Failed to delete selected torrents");
+      return response.json();
+    })
+    .then(function (data) {
+      if (data.status === "success") {
+        alert("Selected torrents have been deleted successfully.");
+      } else if (data.status === "partial_success") {
+        alert("Some torrents could not be deleted.");
+      }
+      location.reload();
+    })
+    .catch(function (error) {
+      console.error("Error deleting selected torrents:", error);
+    });
 }
 
-/**
- * Function to get an unrestricted download link.
- * @param {string} originalLink - The original download link to unrestrict.
- */
+// ──────────────────────────────────────────────────────────────
+// Unrestrict link (fixed URL: /torrent/unrestrict_link)
+// ──────────────────────────────────────────────────────────────
 function getUnrestrictedLink(originalLink) {
-  fetch("/unrestrict_link", {
+  fetch("/torrent/unrestrict_link", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ link: originalLink }),
   })
-    .then((response) => {
+    .then(function (response) {
       if (!response.ok) {
-        return response.json().then((data) => {
-          throw new Error(
-            data.error || "Failed to generate unrestricted link."
-          );
+        return response.json().then(function (data) {
+          throw new Error(data.error || "Failed to generate unrestricted link.");
         });
       }
       return response.json();
     })
-    .then((data) => {
+    .then(function (data) {
       if (data.unrestricted_link) {
         window.location.href = data.unrestricted_link;
       } else {
         alert("Failed to generate unrestricted link.");
       }
     })
-    .catch((error) => {
-      console.error("Error:", error);
-      alert(
-        "An error occurred while generating the unrestricted link: " +
-          error.message
-      );
+    .catch(function (error) {
+      alert("Error generating unrestricted link: " + error.message);
     });
 }
 
-/**
- * Function to validate a URL.
- * @param {string} string - The URL string to validate.
- * @returns {boolean} - Returns true if valid, false otherwise.
- */
+// ──────────────────────────────────────────────────────────────
+// Utilities
+// ──────────────────────────────────────────────────────────────
 function isValidUrl(string) {
   try {
     new URL(string);
@@ -486,61 +457,9 @@ function isValidUrl(string) {
   }
 }
 
-/**
- * Function to toggle all torrent checkboxes when "Select All" is clicked.
- * @param {HTMLInputElement} selectAllCheckbox - The "Select All" checkbox element.
- */
 function toggleSelectAll(selectAllCheckbox) {
-  const checkboxes = document.querySelectorAll(".torrent-checkbox");
-  checkboxes.forEach((checkbox) => {
-    checkbox.checked = selectAllCheckbox.checked;
+  var checkboxes = document.querySelectorAll(".torrent-checkbox");
+  checkboxes.forEach(function (cb) {
+    cb.checked = selectAllCheckbox.checked;
   });
-}
-
-/**
- * Navigation Loading Overlay
- * Displays a loading overlay when navigation links are clicked.
- */
-document.addEventListener("DOMContentLoaded", function () {
-  const navbarLinks = document.querySelectorAll(".navbar a");
-  const loadingOverlay = document.getElementById("loading");
-
-  navbarLinks.forEach((link) => {
-    link.addEventListener("click", function (event) {
-      // Display loading overlay
-      loadingOverlay.style.display = "flex";
-
-      // Delay navigation to let loading overlay display
-      event.preventDefault();
-      const href = this.href;
-
-      setTimeout(() => {
-        window.location.href = href;
-      }, 300); // Adjust this delay if needed
-    });
-  });
-});
-
-function launchHeresphere(videoUrl) {
-  if (!videoUrl) {
-      alert("No video URL provided.");
-      return;
-  }
-
-  fetch('/heresphere/launch_heresphere', {
-      method: 'POST',
-      headers: {
-          'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ video_url: videoUrl }),
-  })
-      .then((response) => response.json())
-      .then((data) => {
-          if (data.message) {
-              alert(data.message);
-          } else if (data.error) {
-              alert(`Error: ${data.error}`);
-          }
-      })
-      .catch((error) => console.error('Error launching HereSphere:', error));
 }
