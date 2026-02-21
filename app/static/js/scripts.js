@@ -169,34 +169,21 @@ function openFileModal(index) {
 // ──────────────────────────────────────────────────────────────
 // VLC streaming
 // ──────────────────────────────────────────────────────────────
+/**
+ * Launch VLC via vlc:// protocol URI (client-side, no server subprocess).
+ */
 function launchVLC(link) {
   if (!link || !isValidUrl(link)) {
     alert("Invalid link provided for VLC.");
     return;
   }
-  fetch("/torrent/stream_vlc", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ link: link }),
-  })
-    .then(function (response) {
-      if (!response.ok) {
-        return response.json().then(function (data) {
-          throw new Error(data.message || "Failed to launch VLC.");
-        });
-      }
-      return response.json();
-    })
-    .then(function (data) {
-      if (data.status !== "success") {
-        alert("Failed to launch VLC. Please try again later.");
-      }
-    })
-    .catch(function (error) {
-      alert("Error launching VLC: " + error.message);
-    });
+  // Open the link using VLC's registered protocol handler
+  window.location.href = "vlc://" + encodeURI(link);
 }
 
+/**
+ * Unrestrict a link via the server, then open in VLC.
+ */
 function streamInVLC(originalLink) {
   fetch("/torrent/unrestrict_link", {
     method: "POST",
@@ -226,24 +213,15 @@ function streamInVLC(originalLink) {
 // ──────────────────────────────────────────────────────────────
 // HereSphere
 // ──────────────────────────────────────────────────────────────
+/**
+ * Launch HereSphere via heresphere:// protocol URI (client-side, no server subprocess).
+ */
 function launchHeresphere(videoUrl) {
   if (!videoUrl) {
     alert("No video URL provided.");
     return;
   }
-  fetch("/heresphere/launch_heresphere", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ video_url: videoUrl }),
-  })
-    .then(function (response) { return response.json(); })
-    .then(function (data) {
-      if (data.message) alert(data.message);
-      else if (data.error) alert("Error: " + data.error);
-    })
-    .catch(function (error) {
-      console.error("Error launching HereSphere:", error);
-    });
+  window.location.href = "heresphere://" + encodeURI(videoUrl);
 }
 
 // ──────────────────────────────────────────────────────────────

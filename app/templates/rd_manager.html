@@ -1,127 +1,94 @@
-<!doctype html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-    <meta charset="utf-8">
-    <title>Debrid Scout - RD Manager</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+{% block title %}RD Manager{% endblock %}
 
-    <!-- Link to External CSS -->
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}?v=1">
+{% block content %}
+<h2>RD Manager</h2>
+<p class="subtitle">Manage your Real-Debrid torrents below:</p>
 
-    <!-- Font Awesome CDN -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-        referrerpolicy="no-referrer" />
-</head>
+{% if torrents %}
+<!-- Toolbar -->
+<div class="toolbar">
+    <button class="delete-selected-button" data-action="delete-selected" aria-label="Delete All Selected Torrents">
+        <i class="fa-solid fa-trash"></i> Delete Selected
+    </button>
+</div>
 
-<body>
-    <!-- Include Account Information -->
-    {% include 'account_info.html' %}
-
-    <!-- Include Navigation Bar -->
-    {% include 'navbar.html' %}
-
-    <div class="main-container">
-        <!-- Logo Section -->
-        <div class="logo-container">
-            <img src="{{ url_for('static', filename='logo.png') }}" alt="Debrid Scout Logo" class="logo">
-        </div>
-
-        <h2>RD Manager</h2>
-        <p class="subtitle">Manage your Real-Debrid torrents below:</p>
-
-        {% if torrents %}
-        <!-- Toolbar Container for Select All and Delete Buttons -->
-        <div class="toolbar">
-            <button class="delete-selected-button" data-action="delete-selected"
-                aria-label="Delete All Selected Torrents">
-                <i class="fa-solid fa-trash"></i> Delete Selected
-            </button>
-        </div>
-
-        <table class="rd-manager-table">
-            <thead>
-                <tr>
-                    <th>
-                        <input type="checkbox" id="select-all" data-action="toggle-select-all"
-                            aria-label="Select All Torrents">
-                        Select All
-                    </th>
-                    <th>Torrent Name</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for torrent in torrents %}
-                <tr>
-                    <td>
-                        <input type="checkbox" class="torrent-checkbox" value="{{ torrent.id }}"
-                            aria-label="Select Torrent {{ torrent.filename or 'Unknown Filename' }}">
-                    </td>
-                    <td>{{ torrent.filename or 'Unknown Filename' }}</td>
-                    <td>
-                        {% if torrent.status == "downloaded" %}
-                        <i class="fa-solid fa-check downloaded-check" title="Downloaded" aria-label="Downloaded"></i>
-                        {% else %}
-                        <i class="fa-solid fa-question" title="Status Unknown" aria-label="Status Unknown"></i>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <div class="button-group">
-                            <button class="button" data-action="show-files" data-id="{{ torrent.id }}"
-                                aria-label="Show Files for {{ torrent.filename or 'Unknown Filename' }}">
-                                <i class="fa-solid fa-folder"></i> Files
-                            </button>
-                            <button class="delete-button" data-action="confirm-delete" data-id="{{ torrent.id }}"
-                                aria-label="Delete Torrent {{ torrent.filename or 'Unknown Filename' }}"
-                                title="Delete Torrent">
-                                <i class="fa-solid fa-trash"></i> Delete
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-
-        <!-- Pagination Controls -->
-        <div class="pagination">
-            {% if current_page > 1 %}
-            <a href="{{ url_for('torrent.rd_manager', page=current_page - 1) }}" class="pagination-link"
-                aria-label="Previous Page">Previous</a>
-            {% endif %}
-
-            {% for page_num in range(1, total_pages + 1) %}
-            {% if page_num == current_page %}
-            <span class="pagination-link active" aria-current="page">{{ page_num }}</span>
-            {% else %}
-            <a href="{{ url_for('torrent.rd_manager', page=page_num) }}" class="pagination-link">{{ page_num }}</a>
-            {% endif %}
-            {% endfor %}
-
-            {% if current_page < total_pages %} <a href="{{ url_for('torrent.rd_manager', page=current_page + 1) }}"
-                class="pagination-link" aria-label="Next Page">Next</a>
+<table class="rd-manager-table">
+    <thead>
+        <tr>
+            <th>
+                <input type="checkbox" id="select-all" data-action="toggle-select-all" aria-label="Select All Torrents">
+                Select All
+            </th>
+            <th>Torrent Name</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for torrent in torrents %}
+        <tr>
+            <td>
+                <input type="checkbox" class="torrent-checkbox" value="{{ torrent.id }}"
+                    aria-label="Select Torrent {{ torrent.filename or 'Unknown Filename' }}">
+            </td>
+            <td>{{ torrent.filename or 'Unknown Filename' }}</td>
+            <td>
+                {% if torrent.status == "downloaded" %}
+                <i class="fa-solid fa-check downloaded-check" title="Downloaded" aria-label="Downloaded"></i>
+                {% else %}
+                <i class="fa-solid fa-question" title="Status Unknown" aria-label="Status Unknown"></i>
                 {% endif %}
-        </div>
-        {% else %}
-        <p>No torrents available.</p>
+            </td>
+            <td>
+                <div class="button-group">
+                    <button class="button" data-action="show-files" data-id="{{ torrent.id }}"
+                        aria-label="Show Files for {{ torrent.filename or 'Unknown Filename' }}">
+                        <i class="fa-solid fa-folder"></i> Files
+                    </button>
+                    <button class="delete-button" data-action="confirm-delete" data-id="{{ torrent.id }}"
+                        aria-label="Delete Torrent {{ torrent.filename or 'Unknown Filename' }}" title="Delete Torrent">
+                        <i class="fa-solid fa-trash"></i> Delete
+                    </button>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Pagination -->
+<div class="pagination">
+    {% if current_page > 1 %}
+    <a href="{{ url_for('torrent.rd_manager', page=current_page - 1) }}" class="pagination-link"
+        aria-label="Previous Page">Previous</a>
+    {% endif %}
+
+    {% for page_num in range(1, total_pages + 1) %}
+    {% if page_num == current_page %}
+    <span class="pagination-link active" aria-current="page">{{ page_num }}</span>
+    {% else %}
+    <a href="{{ url_for('torrent.rd_manager', page=page_num) }}" class="pagination-link">{{ page_num }}</a>
+    {% endif %}
+    {% endfor %}
+
+    {% if current_page < total_pages %} <a href="{{ url_for('torrent.rd_manager', page=current_page + 1) }}"
+        class="pagination-link" aria-label="Next Page">Next</a>
         {% endif %}
+</div>
+{% else %}
+<p>No torrents available.</p>
+{% endif %}
+
+<!-- RD Manager Modal -->
+<div class="rd-modal" id="rdModal">
+    <div class="rd-modal-content">
+        <span class="rd-close" data-action="close-modal" data-id="rdModal">&times;</span>
+        <h3 id="modal-files-title">Files in Torrent</h3>
+        <ul id="files-list">
+            <!-- Files will be dynamically loaded here -->
+        </ul>
     </div>
-
-    <!-- RD Manager Modal -->
-    <div class="rd-modal" id="rdModal">
-        <div class="rd-modal-content">
-            <span class="rd-close" data-action="close-modal" data-id="rdModal">&times;</span>
-            <h3 id="modal-files-title">Files in Torrent</h3>
-            <ul id="files-list">
-                <!-- Files will be dynamically loaded here -->
-            </ul>
-        </div>
-    </div>
-
-    <!-- Include scripts.js -->
-    <script type="text/javascript" src="{{ url_for('static', filename='js/scripts.js') }}?v=1"></script>
-</body>
-
-</html>
+</div>
+{% endblock %}

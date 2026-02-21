@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Debrid Scout - {% block title %}Home{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        referrerpolicy="no-referrer" />
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <!-- Loading Indicator -->
+    <div id="loading">
+        <div id="loading-content">
+            <div class="spinner"></div>
+            <div>Loading...</div>
+        </div>
+    </div>
+
+    <!-- Account Information (auto-populated via context processor) -->
+    {% include 'account_info.html' %}
+
+    <!-- Navigation Bar -->
+    {% include 'navbar.html' %}
+
+    <!-- Page Content -->
+    <div class="main-container">
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Debrid Scout Logo" class="logo">
+        </div>
+        {% block content %}{% endblock %}
+    </div>
+
+    <script type="text/javascript" src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>
