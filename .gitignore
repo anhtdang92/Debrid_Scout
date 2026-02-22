@@ -59,3 +59,4 @@ coverage/
 # Package and lock files
 package-lock.json
 yarn.lock
+trace.txt

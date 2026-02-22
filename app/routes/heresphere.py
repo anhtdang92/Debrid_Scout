@@ -29,6 +29,15 @@ _HERESPHERE_PATHS = [
 heresphere_bp = Blueprint('heresphere', __name__)
 logger = logging.getLogger(__name__)
 
+
+@heresphere_bp.before_request
+def log_heresphere_request():
+    """Log every request that hits the heresphere blueprint for debugging."""
+    logger.info(f"[HS-DEBUG] {request.method} {request.url}")
+    logger.info(f"[HS-DEBUG] Headers: {dict(request.headers)}")
+    if request.data:
+        logger.info(f"[HS-DEBUG] Body: {request.data[:500]}")
+
 # Video extensions we consider playable
 _VIDEO_EXTS = {
     '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm',
@@ -80,16 +89,22 @@ def _guess_projection(filename):
     return screen, stereo
 
 
-# ── GET /heresphere — Library listing ──────────────────────────
-@heresphere_bp.route('', methods=['GET'])
-@heresphere_bp.route('/', methods=['GET'])
+# ── GET/POST /heresphere — Library listing ─────────────────────
+@heresphere_bp.route('', methods=['GET', 'POST'])
+@heresphere_bp.route('/', methods=['GET', 'POST'])
 def library_index():
     """
-    Return the user's RD torrent library in DeoVR "scenes" JSON format.
+    Return the user's RD torrent library in DeoVR/HereSphere JSON format.
 
-    HereSphere's browser calls this endpoint to discover available videos.
-    We use the "shortened format" so HereSphere fetches details on demand.
+    HereSphere sends a POST request when the Web API button is clicked.
+    We handle both GET and POST so it works from browsers and HereSphere.
     """
+    # Log everything about the incoming request for debugging
+    logger.info(f"HereSphere library request: {request.method} {request.url}")
+    logger.debug(f"HereSphere headers: {dict(request.headers)}")
+    if request.data:
+        logger.debug(f"HereSphere body: {request.data[:500]}")
+
     api_key = current_app.config.get('REAL_DEBRID_API_KEY')
     if not api_key:
         return jsonify({"error": "Real-Debrid API key not configured"}), 500
@@ -122,6 +137,7 @@ def library_index():
         })
 
     response = {
+        "authorized": "1",
         "scenes": [{
             "name": "Real-Debrid Library",
             "list": video_list,
@@ -129,7 +145,9 @@ def library_index():
     }
 
     logger.info(f"HereSphere library: returning {len(video_list)} videos")
-    return jsonify(response)
+    resp = jsonify(response)
+    resp.headers['HereSphere-JSON-Version'] = '1'
+    return resp
 
 
 # ── POST /heresphere/<torrent_id> — Video detail ──────────────
