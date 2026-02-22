@@ -1,7 +1,16 @@
 from flask import Blueprint, render_template, request, current_app, jsonify
 import logging
+import os
+import shutil
+import subprocess
 import requests
 from app.services.real_debrid import RealDebridService, RealDebridError
+
+# Known install paths for VLC
+_VLC_PATHS = [
+    r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+    r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
+]
 
 torrent_bp = Blueprint('torrent', __name__)
 logger = logging.getLogger(__name__)
@@ -160,3 +169,33 @@ def delete_torrents():
     if results['failed']:
         return jsonify({'status': 'partial_success', 'results': results}), 207
     return jsonify({'status': 'success', 'results': results}), 200
+
+
+# ── POST /torrent/launch_vlc — PC VLC launcher ───────────────
+@torrent_bp.route('/launch_vlc', methods=['POST'])
+def launch_vlc():
+    """Launch VLC.exe locally on the PC using the provided video URL."""
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 400
+
+    video_url = request.json.get("video_url")
+    if not video_url:
+        return jsonify({"error": "No video URL provided"}), 400
+
+    try:
+        exe_path = None
+        for path in _VLC_PATHS:
+            if os.path.isfile(path):
+                exe_path = path
+                break
+        if not exe_path:
+            exe_path = shutil.which("vlc") or shutil.which("vlc.exe")
+        if not exe_path:
+            logger.error("vlc.exe not found in any known location.")
+            return jsonify({"error": "VLC not found. Please ensure it is installed."}), 404
+
+        subprocess.Popen([exe_path, video_url])
+        return jsonify({"status": "success", "message": "VLC launched"})
+    except Exception as e:
+        logger.error(f"Failed to launch VLC: {e}")
+        return jsonify({"error": str(e)}), 500

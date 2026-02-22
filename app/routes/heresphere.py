@@ -13,9 +13,18 @@ Usage:
 
 from flask import Blueprint, jsonify, request, current_app, url_for
 import logging
+import os
+import shutil
 import requests
 import subprocess
 from app.services.real_debrid import RealDebridService, RealDebridError
+
+# Known install paths for HereSphere (searched via PowerShell)
+_HERESPHERE_PATHS = [
+    r"C:\Program Files (x86)\Steam\steamapps\common\HereSphere\HereSphere.exe",
+    r"C:\Program Files\Steam\steamapps\common\HereSphere\HereSphere.exe",
+    r"D:\SteamLibrary\steamapps\common\HereSphere\HereSphere.exe",
+]
 
 heresphere_bp = Blueprint('heresphere', __name__)
 logger = logging.getLogger(__name__)
@@ -242,7 +251,20 @@ def launch_heresphere():
         return jsonify({"error": "No video URL provided"}), 400
 
     try:
-        subprocess.Popen(["heresphere.exe", video_url])
+        # Find HereSphere.exe from known install paths
+        exe_path = None
+        for path in _HERESPHERE_PATHS:
+            if os.path.isfile(path):
+                exe_path = path
+                break
+        # Fallback: check if it's on PATH
+        if not exe_path:
+            exe_path = shutil.which("HereSphere") or shutil.which("HereSphere.exe")
+        if not exe_path:
+            logger.error("HereSphere.exe not found in any known location.")
+            return jsonify({"error": "HereSphere.exe not found. Please ensure it is installed via Steam."}), 404
+
+        subprocess.Popen([exe_path, video_url])
         return jsonify({"status": "success", "message": "HereSphere launched"})
     except Exception as e:
         logger.error(f"Failed to launch HereSphere: {e}")

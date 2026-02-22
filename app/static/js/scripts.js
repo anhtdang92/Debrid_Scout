@@ -170,15 +170,35 @@ function openFileModal(index) {
 // VLC streaming
 // ──────────────────────────────────────────────────────────────
 /**
- * Launch VLC via vlc:// protocol URI (client-side, no server subprocess).
+ * Launch VLC via server-side subprocess (vlc:// protocol is unreliable on Windows).
  */
 function launchVLC(link) {
-  if (!link || !isValidUrl(link)) {
-    alert("Invalid link provided for VLC.");
+  if (!link) {
+    alert("No video URL provided for VLC.");
     return;
   }
-  // Open the link using VLC's registered protocol handler
-  window.location.href = "vlc://" + encodeURI(link);
+
+  fetch("/torrent/launch_vlc", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": document.querySelector('input[name="csrf_token"]')
+        ? document.querySelector('input[name="csrf_token"]').value
+        : ""
+    },
+    body: JSON.stringify({ video_url: link }),
+  })
+    .then(function (response) {
+      if (!response.ok) {
+        return response.json().then(function (data) {
+          throw new Error(data.error || "Failed to launch VLC on the server.");
+        });
+      }
+      console.log("VLC launched successfully on the server.");
+    })
+    .catch(function (error) {
+      alert("Error launching VLC: " + error.message);
+    });
 }
 
 /**

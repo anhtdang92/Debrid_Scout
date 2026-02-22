@@ -3,7 +3,6 @@
 from flask import Blueprint, request, render_template, current_app
 import logging
 import time
-from app import cache
 from app.services.file_helper import FileHelper
 from app.services.real_debrid import RealDebridError
 from app.services.rd_download_link import RDDownloadLinkService, RDDownloadLinkError
@@ -13,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 @search_bp.route('/', methods=['GET', 'POST'])
-@cache.cached(timeout=300, query_string=True, key_prefix=lambda: request.url + str(request.form))
 def index():
     # account_info is injected automatically via context processor.
     output = ""
