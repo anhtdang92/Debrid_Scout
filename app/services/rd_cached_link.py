@@ -56,18 +56,27 @@ class RDCachedLinkService:
         # 1. Search Jackett
         jackett_service = JackettSearchService()
         search_results, jackett_elapsed = jackett_service.search(query, limit)
+        logger.info(f"Jackett returned {len(search_results)} results in {jackett_elapsed:.2f}s.")
 
         # 2. Check cache for each result
         output = []
         processed_infohashes = set()
+        skipped_no_hash = 0
+        skipped_dup = 0
+        skipped_no_size = 0
 
         for result in search_results:
             infohash = result.get("infohash")
-            if not infohash or infohash in processed_infohashes:
+            if not infohash:
+                skipped_no_hash += 1
+                continue
+            if infohash in processed_infohashes:
+                skipped_dup += 1
                 continue
 
             byte_size = result.get("byte_size")
             if not byte_size:
+                skipped_no_size += 1
                 continue
 
             processed_infohashes.add(infohash)
@@ -84,6 +93,11 @@ class RDCachedLinkService:
                 cached_result["torznab_attributes"] = torznab_attrs
 
             output.append(cached_result)
+
+        logger.info(
+            f"Cache check: {len(output)} results returned "
+            f"(skipped: {skipped_no_hash} no-hash, {skipped_dup} dup, {skipped_no_size} no-size)"
+        )
 
         elapsed = time.perf_counter() - start
         return output, elapsed, jackett_elapsed

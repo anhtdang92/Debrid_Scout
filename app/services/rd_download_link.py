@@ -61,6 +61,7 @@ class RDDownloadLinkService:
         cached_links, cached_links_time, jackett_time = (
             cached_link_service.search_and_check_cache(query, limit)
         )
+        logger.info(f"Pipeline: {len(cached_links)} cached links from RDCachedLinkService.")
 
         # 2. Process cached results into download links
         final_output = []
@@ -79,12 +80,15 @@ class RDDownloadLinkService:
 
             try:
                 # Add magnet to Real-Debrid
+                logger.debug(f"Adding magnet for '{torrent_name}' (hash: {infohash[:8]}...)")
                 torrent_id = self.rd_service.add_magnet(magnet_link)
                 if not torrent_id:
+                    logger.warning(f"Failed to add magnet for '{torrent_name}'")
                     continue
 
                 # Select all files
                 if not self.rd_service.select_files(torrent_id):
+                    logger.warning(f"Failed to select files for torrent '{torrent_name}'")
                     continue
 
                 # Get torrent info
@@ -104,6 +108,10 @@ class RDDownloadLinkService:
                 # Build file list (video files only)
                 torrent_files = []
                 files = torrent_info.get('files', [])
+                logger.debug(
+                    f"Torrent '{torrent_name}': {len(files)} total files, "
+                    f"{len(links)} links, {len(unrestricted_links)} unrestricted"
+                )
                 for file_info, unrestricted_link in zip(files, unrestricted_links):
                     file_name = file_info['path'].lstrip('/')
                     file_size = FileHelper.format_file_size(file_info['bytes'])
@@ -114,6 +122,7 @@ class RDDownloadLinkService:
                             'Download Link': unrestricted_link,
                         })
 
+                logger.debug(f"Torrent '{torrent_name}': {len(torrent_files)} video files found.")
                 if torrent_files:
                     final_output.append({
                         'Torrent Name': torrent_name,

@@ -67,13 +67,18 @@ class JackettSearchService:
 
         xml_data = self._query_jackett(query, limit)
         if not xml_data:
+            logger.warning("Jackett returned no XML data.")
             elapsed = time.perf_counter() - start
             return [], elapsed
 
+        logger.debug(f"Jackett returned {len(xml_data)} bytes of XML.")
         raw_results = self._parse_xml(xml_data)
         if not raw_results:
+            logger.warning("No results parsed from Jackett XML.")
             elapsed = time.perf_counter() - start
             return [], elapsed
+
+        logger.info(f"Jackett: parsed {len(raw_results)} results for query '{query}'.")
 
         category_mapping = self._get_category_mapping()
 
@@ -133,18 +138,22 @@ class JackettSearchService:
         delay = 2
         session = self._create_session()
 
+        logger.debug(f"Querying Jackett: {url} with query='{params['q']}' limit={params['limit']}")
         for attempt in range(1, max_retries + 1):
             try:
                 response = session.get(url, params=params)
+                logger.debug(f"Jackett HTTP response: {response.status_code}")
                 response.raise_for_status()
                 return response.content
             except cloudscraper.exceptions.CloudflareChallengeError:
+                logger.warning(f"Cloudflare challenge on attempt {attempt}/{max_retries}")
                 if attempt < max_retries:
                     time.sleep(delay)
                 else:
                     logger.error("Cloudflare challenge could not be bypassed after multiple attempts.")
                     return None
             except Exception as e:
+                logger.warning(f"Jackett query attempt {attempt}/{max_retries} failed: {e}")
                 if attempt < max_retries:
                     time.sleep(delay)
                 else:
