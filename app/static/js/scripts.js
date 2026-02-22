@@ -214,14 +214,37 @@ function streamInVLC(originalLink) {
 // HereSphere
 // ──────────────────────────────────────────────────────────────
 /**
- * Launch HereSphere via heresphere:// protocol URI (client-side, no server subprocess).
+ * Launch HereSphere via server-side subprocess (legacy functionality).
+ * HereSphere does not automatically register the heresphere:// protocol on Windows.
  */
 function launchHeresphere(videoUrl) {
   if (!videoUrl) {
-    alert("No video URL provided.");
+    alert("No video URL provided for HereSphere.");
     return;
   }
-  window.location.href = "heresphere://" + encodeURI(videoUrl);
+
+  fetch("/heresphere/launch_heresphere", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // Include CSRF token if it exists just in case (though heresphere_bp is exempted)
+      "X-CSRFToken": document.querySelector('input[name="csrf_token"]')
+        ? document.querySelector('input[name="csrf_token"]').value
+        : ""
+    },
+    body: JSON.stringify({ video_url: videoUrl }),
+  })
+    .then(function (response) {
+      if (!response.ok) {
+        return response.json().then(function (data) {
+          throw new Error(data.error || "Failed to launch HereSphere on the server.");
+        });
+      }
+      console.log("HereSphere launched successfully on the server.");
+    })
+    .catch(function (error) {
+      alert("Error launching HereSphere: " + error.message);
+    });
 }
 
 // ──────────────────────────────────────────────────────────────

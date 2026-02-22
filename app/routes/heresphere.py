@@ -14,6 +14,7 @@ Usage:
 from flask import Blueprint, jsonify, request, current_app, url_for
 import logging
 import requests
+import subprocess
 from app.services.real_debrid import RealDebridService, RealDebridError
 
 heresphere_bp = Blueprint('heresphere', __name__)
@@ -224,3 +225,25 @@ def video_detail(torrent_id):
 
     logger.info(f"HereSphere: serving {len(video_sources)} sources for torrent {torrent_id}")
     return jsonify(response)
+
+
+# ── POST /heresphere/launch_heresphere — PC app launcher ──────
+@heresphere_bp.route('/launch_heresphere', methods=['POST'])
+def launch_heresphere():
+    """
+    Launch HereSphere.exe locally on the PC using the provided video URL.
+    This restores the original 'Open in HereSphere' button functionality.
+    """
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 400
+
+    video_url = request.json.get("video_url")
+    if not video_url:
+        return jsonify({"error": "No video URL provided"}), 400
+
+    try:
+        subprocess.Popen(["heresphere.exe", video_url])
+        return jsonify({"status": "success", "message": "HereSphere launched"})
+    except Exception as e:
+        logger.error(f"Failed to launch HereSphere: {e}")
+        return jsonify({"error": str(e)}), 500
