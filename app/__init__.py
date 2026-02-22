@@ -11,6 +11,10 @@ from .routes.account import account_bp
 from .routes.torrent import torrent_bp
 from .routes.info import info_bp
 from .routes.heresphere import heresphere_bp
+from flask_caching import Cache
+
+# Global cache instance
+cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
 
 # Load environment variables here in case it's not loaded in config.py
 load_dotenv()
@@ -70,6 +74,9 @@ def create_app():
     # ── CSRF protection ────────────────────────────────────────
     from flask_wtf.csrf import CSRFProtect
     csrf = CSRFProtect(app)
+
+    # Initialize Cache
+    cache.init_app(app)
 
     # Exempt JSON API endpoints from CSRF (they use Authorization headers)
     csrf.exempt(torrent_bp)

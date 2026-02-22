@@ -713,17 +713,7 @@ input[type="checkbox"]:checked::after {
     border-color: #005f7a; /* Matches background color on hover */
 }
 
-/* Fade-in Animation for Modal Appearance */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(-10%);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
+/* (Removed duplicate fadeIn animation) */
 
 /* Applying the Animation with Easing */
 .rd-modal-content {

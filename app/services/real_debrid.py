@@ -3,6 +3,7 @@
 import requests
 import logging
 from datetime import datetime
+import time
 from flask import current_app
 from typing import Optional, Dict, Any, List
 
@@ -27,10 +28,18 @@ class RealDebridService:
         self.headers = {
             'Authorization': f'Bearer {self.api_key}'
         }
+        
+        # A small delay (in seconds) between requests to prevent rate limiting
+        self.request_delay = 0.2
+
+    def _rate_limit(self):
+        """Enforce a simple delay to avoid hitting rate limits."""
+        time.sleep(self.request_delay)
 
     def get_account_info(self) -> Dict[str, Any]:
         """Fetch account information from Real-Debrid."""
         try:
+            self._rate_limit()
             logger.debug("Requesting Real-Debrid account information.")
             response = requests.get('https://api.real-debrid.com/rest/1.0/user', headers=self.headers)
             response.raise_for_status()  # Will raise HTTPError for bad responses
@@ -63,6 +72,7 @@ class RealDebridService:
     def add_magnet(self, magnet_link: str) -> Optional[str]:
         """Add a magnet link to Real-Debrid."""
         try:
+            self._rate_limit()
             logger.debug(f"Adding magnet link to Real-Debrid: {magnet_link}")
             response = requests.post(
                 'https://api.real-debrid.com/rest/1.0/torrents/addMagnet',
@@ -80,6 +90,7 @@ class RealDebridService:
     def select_files(self, torrent_id: str) -> bool:
         """Select all files for a torrent in Real-Debrid."""
         try:
+            self._rate_limit()
             logger.debug(f"Selecting all files for torrent ID: {torrent_id}")
             response = requests.post(
                 f'https://api.real-debrid.com/rest/1.0/torrents/selectFiles/{torrent_id}',
@@ -99,6 +110,7 @@ class RealDebridService:
     def get_torrent_info(self, torrent_id: str) -> Dict[str, Any]:
         """Retrieve detailed information about a specific torrent."""
         try:
+            self._rate_limit()
             logger.debug(f"Fetching torrent info for ID: {torrent_id}")
             response = requests.get(
                 f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
@@ -115,6 +127,7 @@ class RealDebridService:
     def unrestrict_link(self, link: str) -> Optional[str]:
         """Unrestrict a Real-Debrid link to obtain a direct download link."""
         try:
+            self._rate_limit()
             logger.debug(f"Unrestricting link: {link}")
             response = requests.post(
                 'https://api.real-debrid.com/rest/1.0/unrestrict/link',
@@ -137,6 +150,7 @@ class RealDebridService:
         try:
             logger.debug("Fetching all torrents from Real-Debrid.")
             while True:
+                self._rate_limit()
                 logger.debug(f"Fetching torrents from page {page}.")
                 response = requests.get(
                     f'https://api.real-debrid.com/rest/1.0/torrents?page={page}',

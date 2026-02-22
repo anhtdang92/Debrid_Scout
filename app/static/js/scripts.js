@@ -257,6 +257,15 @@ function showFiles(torrentId) {
   li.textContent = "Loading files...";
   filesList.appendChild(li);
 
+  // Find the button that triggered this and set it to a loading state
+  var btn = document.querySelector('button[data-action="show-files"][data-id="' + torrentId + '"]');
+  var originalHTML = "";
+  if (btn) {
+    originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+    btn.disabled = true;
+  }
+
   fetch("/torrent/torrents/" + encodeURIComponent(torrentId))
     .then(function (response) {
       if (!response.ok) throw new Error("Network response was not ok");
@@ -343,6 +352,13 @@ function showFiles(torrentId) {
     .catch(function (error) {
       filesList.innerHTML = "<li><strong>Error loading files. Please try again.</strong></li>";
       console.error("Error fetching torrent files:", error);
+    })
+    .finally(function () {
+      // Restore the button state
+      if (btn) {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+      }
     });
 }
 
@@ -353,6 +369,15 @@ function deleteTorrent(torrentId) {
   if (!torrentId || typeof torrentId !== "string") {
     alert("Invalid torrent ID provided.");
     return;
+  }
+
+  // Find the button and set loading state
+  var btn = document.querySelector('button[data-action="confirm-delete"][data-id="' + torrentId + '"]');
+  var originalHTML = "";
+  if (btn) {
+    originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting...';
+    btn.disabled = true;
   }
 
   fetch("/torrent/delete_torrent/" + encodeURIComponent(torrentId), {
@@ -372,6 +397,12 @@ function deleteTorrent(torrentId) {
     })
     .catch(function (error) {
       alert("Error deleting torrent: " + error.message);
+    })
+    .finally(function () {
+      if (btn) {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+      }
     });
 }
 
@@ -391,6 +422,14 @@ function deleteSelectedTorrents() {
 
   if (!confirm("Are you sure you want to delete the selected " + selectedCheckboxes.length + " torrent(s)?")) {
     return;
+  }
+
+  var btn = document.querySelector('button[data-action="delete-selected"]');
+  var originalHTML = "";
+  if (btn) {
+    originalHTML = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting...';
+    btn.disabled = true;
   }
 
   var torrentIds = Array.from(selectedCheckboxes).map(function (cb) { return cb.value; });
@@ -414,6 +453,12 @@ function deleteSelectedTorrents() {
     })
     .catch(function (error) {
       console.error("Error deleting selected torrents:", error);
+    })
+    .finally(function () {
+      if (btn) {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+      }
     });
 }
 
