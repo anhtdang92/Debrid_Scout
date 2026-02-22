@@ -5,16 +5,17 @@ import os
 import json
 import time
 from dotenv import load_dotenv
+from flask_caching import Cache
 from app.config import DevelopmentConfig, ProductionConfig
+
+# Global cache instance
+cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
+
 from .routes.search import search_bp
 from .routes.account import account_bp
 from .routes.torrent import torrent_bp
 from .routes.info import info_bp
 from .routes.heresphere import heresphere_bp
-from flask_caching import Cache
-
-# Global cache instance
-cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
 
 # Load environment variables here in case it's not loaded in config.py
 load_dotenv()
