@@ -93,15 +93,64 @@ document.addEventListener("DOMContentLoaded", function () {
 
     switch (action) {
       case "download":
-        if (url && isValidUrl(url)) window.open(url, "_blank");
+        if (url) {
+          // Unrestrict the link on-demand, then open the direct download
+          btn.disabled = true;
+          var origHTML = btn.innerHTML;
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+          fetch("/torrent/unrestrict_link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ link: url })
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              var dlUrl = data.unrestricted_link || url;
+              if (dlUrl && isValidUrl(dlUrl)) window.open(dlUrl, "_blank");
+            })
+            .catch(function () {
+              // Fallback: try opening the original URL
+              if (isValidUrl(url)) window.open(url, "_blank");
+            })
+            .finally(function () {
+              btn.innerHTML = origHTML;
+              btn.disabled = false;
+            });
+        }
         break;
 
       case "vlc":
-        launchVLC(url);
+        if (url) {
+          btn.disabled = true;
+          var vlcOrigHTML = btn.innerHTML;
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+          fetch("/torrent/unrestrict_link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ link: url })
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) { launchVLC(data.unrestricted_link || url); })
+            .catch(function () { launchVLC(url); })
+            .finally(function () { btn.innerHTML = vlcOrigHTML; btn.disabled = false; });
+        }
         break;
 
       case "heresphere":
-        launchHeresphere(url);
+        if (url) {
+          btn.disabled = true;
+          var hsOrigHTML = btn.innerHTML;
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+          fetch("/torrent/unrestrict_link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ link: url })
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) { launchHeresphere(data.unrestricted_link || url); })
+            .catch(function () { launchHeresphere(url); })
+            .finally(function () { btn.innerHTML = hsOrigHTML; btn.disabled = false; });
+        }
         break;
 
       case "open-file-modal":
@@ -528,4 +577,233 @@ function toggleSelectAll(selectAllCheckbox) {
   checkboxes.forEach(function (cb) {
     cb.checked = selectAllCheckbox.checked;
   });
+}
+
+// ──────────────────────────────────────────────────────────────
+// Streaming Search Actions
+// ──────────────────────────────────────────────────────────────
+
+var currentSearchId = null;
+
+function startStreamingSearch() {
+  var queryInput = document.getElementById("query");
+  var limitInput = document.getElementById("limit");
+  var query = queryInput ? queryInput.value.trim() : "";
+  var limit = limitInput ? limitInput.value.trim() : "10";
+
+  if (!query) {
+    alert("Please enter a search query.");
+    return;
+  }
+
+  // UI Reset
+  document.getElementById("search-error").style.display = "none";
+  document.getElementById("submit-button").style.display = "none";
+  document.getElementById("cancel-button").style.display = "inline-block";
+  document.getElementById("search-progress").style.display = "block";
+  document.getElementById("progress-bar").style.width = "0%";
+  document.getElementById("progress-status").innerText = "Starting search...";
+  document.getElementById("progress-detail").innerText = "";
+  document.getElementById("progress-spinner").style.display = "inline-block";
+
+  // Results UI
+  var resultsContainer = document.getElementById("stream-results");
+  var resultsBody = document.getElementById("stream-results-body");
+  var timerContainer = document.getElementById("stream-timer");
+  if (resultsContainer && resultsBody) {
+    resultsContainer.style.display = "block";
+    resultsBody.innerHTML = "";
+    document.getElementById("stream-total").innerText = "0";
+    document.getElementById("stream-elapsed").innerText = "0";
+    timerContainer.style.display = "none";
+  }
+
+  // We use fetch to initiate the POST because standard EventSource only supports GET.
+  // To stick to vanilla JS without external polyfills, we can consume the response body as a stream.
+  fetch("/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: query, limit: parseInt(limit, 10) })
+  })
+    .then(function (response) {
+      if (!response.ok) throw new Error("Network response was not ok");
+      var reader = response.body.getReader();
+      var decoder = new TextDecoder("utf-8");
+      var buffer = "";
+
+      function processStream() {
+        return reader.read().then(function (result) {
+          if (result.done) {
+            finishStreamingSearch();
+            return;
+          }
+          buffer += decoder.decode(result.value, { stream: true });
+          // The SSE format uses \n\n to separate events
+          var events = buffer.split("\n\n");
+          // Keep the last chunk in the buffer if it doesn't end with \n\n
+          buffer = events.pop();
+
+          for (var i = 0; i < events.length; i++) {
+            var ev = events[i].trim();
+            if (ev.indexOf("data: ") === 0) {
+              var dataStr = ev.substring(6);
+              try {
+                var data = JSON.parse(dataStr);
+                handleSearchEvent(data);
+              } catch (e) {
+                console.error("Failed to parse SSE JSON:", dataStr);
+              }
+            }
+          }
+          return processStream();
+        });
+      }
+      return processStream();
+    })
+    .catch(function (err) {
+      console.error("Streaming error:", err);
+      document.getElementById("search-error").style.display = "block";
+      document.getElementById("search-error-text").innerText = "Search stream failed: " + err.message;
+      finishStreamingSearch();
+    });
+}
+
+function handleSearchEvent(data) {
+  if (data.type === "search_id") {
+    currentSearchId = data.id;
+  }
+  else if (data.type === "progress") {
+    document.getElementById("progress-status").innerText = data.stage || "Processing...";
+    document.getElementById("progress-detail").innerText = data.detail || "";
+    if (data.total > 0 && data.current !== undefined) {
+      var pct = Math.floor((data.current / data.total) * 100);
+      document.getElementById("progress-bar").style.width = pct + "%";
+    }
+  }
+  else if (data.type === "result") {
+    appendStreamResult(data.torrent);
+  }
+  else if (data.type === "done") {
+    document.getElementById("progress-status").innerText = "Complete!";
+    document.getElementById("progress-detail").innerText = "Found " + data.total + " torrents.";
+    document.getElementById("progress-bar").style.width = "100%";
+
+    document.getElementById("stream-timer").style.display = "flex";
+    document.getElementById("stream-elapsed").innerText = data.elapsed;
+    finishStreamingSearch();
+  }
+  else if (data.type === "cancelled") {
+    document.getElementById("progress-status").innerText = "Cancelled";
+    document.getElementById("progress-detail").innerText = "Search was stopped.";
+    finishStreamingSearch();
+  }
+  else if (data.type === "error") {
+    document.getElementById("search-error").style.display = "block";
+    document.getElementById("search-error-text").innerText = data.message;
+    finishStreamingSearch();
+  }
+}
+
+function appendStreamResult(torrent) {
+  var tbody = document.getElementById("stream-results-body");
+  if (!tbody) return;
+
+  var tr = document.createElement("tr");
+
+  // Format file name
+  var formattedName = torrent["Torrent Name"].replace(/[._]/g, " ");
+
+  // Column 1: Name
+  var tdName = document.createElement("td");
+  tdName.innerText = formattedName;
+  tr.appendChild(tdName);
+
+  // Column 2: Categories
+  var tdCats = document.createElement("td");
+  (torrent["Categories"] || []).forEach(function (cat) {
+    var span = document.createElement("span");
+    span.className = "category-tag";
+    span.innerText = cat;
+    tdCats.appendChild(span);
+  });
+  tr.appendChild(tdCats);
+
+  // Column 3: Files (simplified for the stream - we list them directly)
+  var tdFiles = document.createElement("td");
+  var filesDiv = document.createElement("div");
+  filesDiv.className = "scrollable-content";
+  filesDiv.style.maxHeight = "250px";
+  filesDiv.style.minWidth = "300px";
+
+  (torrent["Files"] || []).forEach(function (f) {
+    var fCont = document.createElement("div");
+    fCont.style.marginBottom = "15px";
+    fCont.style.borderBottom = "1px solid #444";
+    fCont.style.paddingBottom = "10px";
+
+    var fInfo = document.createElement("div");
+    fInfo.innerHTML = "<strong>File:</strong> " + f["File Name"].replace(/[._]/g, " ") +
+      "<br><strong>Size:</strong> " + f["File Size"];
+    fCont.appendChild(fInfo);
+
+    var acts = document.createElement("div");
+    acts.className = "file-actions";
+    acts.style.marginTop = "8px";
+
+    var dl = document.createElement("button");
+    dl.className = "button";
+    dl.setAttribute("data-action", "download");
+    dl.setAttribute("data-url", f["Download Link"]);
+    dl.innerHTML = '<i class="fa-solid fa-download"></i> Download';
+    acts.appendChild(dl);
+
+    var vlc = document.createElement("button");
+    vlc.className = "button";
+    vlc.setAttribute("data-action", "vlc");
+    vlc.setAttribute("data-url", f["Download Link"]);
+    vlc.style.marginLeft = "10px";
+    vlc.innerHTML = '<i class="fa-solid fa-play"></i> VLC';
+    acts.appendChild(vlc);
+
+    var hs = document.createElement("button");
+    hs.className = "button";
+    hs.setAttribute("data-action", "heresphere");
+    hs.setAttribute("data-url", f["Download Link"]);
+    hs.style.marginLeft = "10px";
+    hs.innerHTML = '<i class="fa-solid fa-vr-cardboard"></i> HereSphere';
+    acts.appendChild(hs);
+
+    fCont.appendChild(acts);
+    filesDiv.appendChild(fCont);
+  });
+
+  tdFiles.appendChild(filesDiv);
+  tr.appendChild(tdFiles);
+  tbody.appendChild(tr);
+
+  // Update total count
+  var countEl = document.getElementById("stream-total");
+  if (countEl) {
+    countEl.innerText = tbody.querySelectorAll("tr").length;
+  }
+}
+
+function cancelStreamingSearch() {
+  if (currentSearchId) {
+    fetch("/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ search_id: currentSearchId })
+    }).catch(function (e) { console.error("Cancel failed:", e); });
+  }
+  document.getElementById("progress-status").innerText = "Cancelling...";
+  document.getElementById("cancel-button").disabled = true;
+}
+
+function finishStreamingSearch() {
+  document.getElementById("submit-button").style.display = "inline-block";
+  document.getElementById("cancel-button").style.display = "none";
+  document.getElementById("cancel-button").disabled = false;
+  document.getElementById("progress-spinner").style.display = "none";
+  currentSearchId = null;
 }

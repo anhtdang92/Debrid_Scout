@@ -84,6 +84,7 @@ def create_app():
     csrf.exempt(torrent_bp)
     csrf.exempt(heresphere_bp)
     csrf.exempt(deovr_bp)
+    csrf.exempt(search_bp)
 
     # Ensure the logs directory exists
     log_directory = os.path.join(app.root_path, '..', 'logs')

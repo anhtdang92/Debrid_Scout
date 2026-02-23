@@ -87,15 +87,15 @@ class RealDebridService:
             logger.error(f"Error adding magnet link '{magnet_link}': {e}")
             raise RealDebridError("Failed to add magnet link.")
 
-    def select_files(self, torrent_id: str) -> bool:
-        """Select all files for a torrent in Real-Debrid."""
+    def select_files(self, torrent_id: str, files: str = 'all') -> bool:
+        """Select specific files for a torrent in Real-Debrid."""
         try:
             self._rate_limit()
-            logger.debug(f"Selecting all files for torrent ID: {torrent_id}")
+            logger.debug(f"Selecting files '{files}' for torrent ID: {torrent_id}")
             response = requests.post(
                 f'https://api.real-debrid.com/rest/1.0/torrents/selectFiles/{torrent_id}',
                 headers=self.headers,
-                data={'files': 'all'}
+                data={'files': files}
             )
             if response.status_code == 204:
                 logger.debug(f"Files selected successfully for torrent ID: {torrent_id}")

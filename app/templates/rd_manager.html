@@ -38,7 +38,13 @@
                 {% if torrent.status == "downloaded" %}
                 <i class="fa-solid fa-check downloaded-check" title="Downloaded" aria-label="Downloaded"></i>
                 {% else %}
-                <i class="fa-solid fa-question" title="Status Unknown" aria-label="Status Unknown"></i>
+                <span style="color: #f39c12; font-weight: bold;">
+                    {% if torrent.status == "downloading" %}
+                    <i class="fa-solid fa-spinner fa-spin"></i> Downloading ({{ torrent.progress }}%)
+                    {% else %}
+                    <i class="fa-solid fa-clock"></i> {{ torrent.status | title }}
+                    {% endif %}
+                </span>
                 {% endif %}
             </td>
             <td>

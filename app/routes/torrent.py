@@ -104,16 +104,10 @@ def get_torrent_details(torrent_id):
         links = torrent_data.get('links', [])
         selected_files = [f for f in files if f.get('selected') == 1]
 
-        # Unrestrict links
-        real_debrid_service = RealDebridService(api_key=REAL_DEBRID_API_KEY)
-        unrestricted_links = []
-        for link in links:
-            try:
-                unrestricted_links.append(real_debrid_service.unrestrict_link(link))
-            except RealDebridError:
-                unrestricted_links.append(link)
-
-        link_mapping = {f['id']: link for f, link in zip(selected_files, unrestricted_links)}
+        # Map selected files to their restricted links (do NOT unrestrict here —
+        # that's slow and blocks the browser).  The frontend will call
+        # /torrent/unrestrict_link on-demand when the user clicks Download.
+        link_mapping = {f['id']: link for f, link in zip(selected_files, links)}
         sorted_files = sorted(selected_files, key=lambda f: f.get('bytes', 0), reverse=True)
 
         processed_files = []

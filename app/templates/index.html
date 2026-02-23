@@ -7,8 +7,7 @@
     <h2 id="home">Search</h2>
     <p class="subtitle">Torrent Search with Real-Debrid Cached Status</p>
 
-    <form method="post" id="search-form" autocomplete="off">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <form id="search-form" autocomplete="off" onsubmit="return false;">
         <div class="form-group">
             <label for="query">Search Query:</label>
             <div class="input-group search-container">
@@ -22,11 +21,34 @@
             <input type="number" id="limit" name="limit" value="10" min="1" required autocomplete="off">
         </div>
         <div class="form-group full-width">
-            <button type="submit" class="submit-button" id="submit-button">
+            <button type="button" class="submit-button" id="submit-button" onclick="startStreamingSearch()">
                 <i class="fa-solid fa-paper-plane"></i> Submit
+            </button>
+            <button type="button" class="submit-button" id="cancel-button" onclick="cancelStreamingSearch()"
+                style="display:none; background: #e74c3c; margin-left: 10px;">
+                <i class="fa-solid fa-stop"></i> Cancel
             </button>
         </div>
     </form>
+
+    <!-- Streaming Progress Section -->
+    <div id="search-progress" style="display:none; margin: 20px 0;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <i class="fa-solid fa-spinner fa-spin" id="progress-spinner"></i>
+            <span id="progress-status">Searching...</span>
+        </div>
+        <div style="width: 100%; background: #333; border-radius: 8px; overflow: hidden; height: 6px;">
+            <div id="progress-bar"
+                style="width: 0%; height: 100%; background: linear-gradient(90deg, #3498db, #2ecc71); transition: width 0.3s;">
+            </div>
+        </div>
+        <div id="progress-detail" style="margin-top: 4px; font-size: 0.85em; color: #888;"></div>
+    </div>
+
+    <!-- Error message area -->
+    <div id="search-error" class="error-message" style="display:none;">
+        <p id="search-error-text"></p>
+    </div>
 
     {% if error %}
     <div class="error-message">
@@ -40,15 +62,33 @@
     </div>
     {% endif %}
 
-    {% if data and data|length > 0 %}
-    <!-- Results Table -->
-    <h2 id="search">Results:</h2>
-    <table class="index-table">
-        <colgroup>
-            <col>
-            <col>
-            <col>
-        </colgroup>
+    <!-- Streaming Results Table -->
+    <div id="stream-results" style="display:none;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Torrent Name</th>
+                    <th>Categories</th>
+                    <th>Files</th>
+                </tr>
+            </thead>
+            <tbody id="stream-results-body">
+            </tbody>
+        </table>
+
+        <div class="timer-info" id="stream-timer" style="display:none;">
+            <div class="total-results">
+                <i class="fa-solid fa-list"></i> Total Torrents Found: <span id="stream-total">0</span>
+            </div>
+            <div class="processing-time">
+                <i class="fa-solid fa-clock"></i> Processing Time: <span id="stream-elapsed">0</span> seconds
+            </div>
+        </div>
+    </div>
+
+    <!-- Legacy server-rendered results (from synchronous form POST) -->
+    {% if data %}
+    <table>
         <thead>
             <tr>
                 <th>Torrent Name</th>
@@ -59,13 +99,10 @@
         <tbody>
             {% for torrent in data %}
             <tr>
-                <td>{{ torrent['Torrent Name'] }}</td>
-                <td class="categories">
-                    {% for category in torrent['Categories'] %}
-                    {% set category_name = category.strip() %}
-                    {% set icon_class = category_icons.get(category_name, 'fa-question-circle') %}
-                    <i class="fa {{ icon_class }}" aria-hidden="true" title="{{ category_name }}"></i>
-                    <span class="sr-only">{{ category_name }}</span>
+                <td>{{ simplify_filename(torrent['Torrent Name']) }}</td>
+                <td>
+                    {% for category in torrent.get('Categories', []) %}
+                    <span class="category-tag">{{ category }}</span>
                     {% endfor %}
                 </td>
                 <td>
@@ -96,7 +133,6 @@
                         Show Files ({{ torrent['Files']|length }})
                     </button>
 
-                    <!-- Modal for showing files -->
                     <div id="modal-{{ loop.index }}" class="rd-modal">
                         <div class="rd-modal-content">
                             <span class="rd-close" data-action="close-modal"
@@ -129,7 +165,6 @@
         </tbody>
     </table>
 
-    <!-- Timer Section -->
     <div class="timer-info">
         <div class="total-results">
             <i class="fa-solid fa-list"></i> Total Torrents Found: {{ data|length }}
