@@ -16,6 +16,7 @@ from .routes.account import account_bp
 from .routes.torrent import torrent_bp
 from .routes.info import info_bp
 from .routes.heresphere import heresphere_bp
+from .routes.deovr import deovr_bp
 
 # Load environment variables here in case it's not loaded in config.py
 load_dotenv()
@@ -82,6 +83,7 @@ def create_app():
     # Exempt JSON API endpoints from CSRF (they use Authorization headers)
     csrf.exempt(torrent_bp)
     csrf.exempt(heresphere_bp)
+    csrf.exempt(deovr_bp)
 
     # Ensure the logs directory exists
     log_directory = os.path.join(app.root_path, '..', 'logs')
@@ -140,5 +142,6 @@ def create_app():
     app.register_blueprint(torrent_bp, url_prefix='/torrent')
     app.register_blueprint(info_bp)  # No URL prefix for info
     app.register_blueprint(heresphere_bp, url_prefix='/heresphere')
+    app.register_blueprint(deovr_bp, url_prefix='/deovr')
 
     return app

@@ -26,17 +26,17 @@ _HERESPHERE_PATHS = [
     r"D:\SteamLibrary\steamapps\common\HereSphere\HereSphere.exe",
 ]
 
-heresphere_bp = Blueprint('heresphere', __name__)
+deovr_bp = Blueprint('deovr', __name__)
 logger = logging.getLogger(__name__)
 
 
-@heresphere_bp.before_request
-def log_heresphere_request():
-    """Log every request that hits the heresphere blueprint for debugging."""
-    logger.info(f"[HS-DEBUG] {request.method} {request.url}")
-    logger.info(f"[HS-DEBUG] Headers: {dict(request.headers)}")
+@deovr_bp.before_request
+def log_deovr_request():
+    """Log every request that hits the deovr blueprint for debugging."""
+    logger.info(f"[DEOVR-DEBUG] {request.method} {request.url}")
+    logger.info(f"[DEOVR-DEBUG] Headers: {dict(request.headers)}")
     if request.data:
-        logger.info(f"[HS-DEBUG] Body: {request.data[:500]}")
+        logger.info(f"[DEOVR-DEBUG] Body: {request.data[:500]}")
 
 # Video extensions we consider playable
 _VIDEO_EXTS = {
@@ -54,7 +54,15 @@ def _is_video(filename):
 def _guess_projection(filename):
     """
     Guess VR projection from filename conventions.
-    Returns (projection, stereo, fov, lens) tuple for HereSphere native API.
+    Returns (screenType, stereoMode) tuple.
+
+    Common patterns:
+      _180_SBS, _180x180_SBS  → dome, sbs
+      _360_TB                 → sphere, tb
+      _FISHEYE190_SBS         → fisheye, sbs
+      _MKX200_SBS             → mkx200, sbs
+      _RF52                   → rf52, sbs
+      (default)               → dome, sbs
     """
     upper = filename.upper()
 
@@ -64,51 +72,35 @@ def _guess_projection(filename):
     else:
         stereo = 'sbs'  # SBS is the most common default
 
-    # FOV & Lens
-    fov = 180.0
-    lens = 'Linear'
-
     # Screen type / projection
-    if '_FISHEYE190' in upper or '_RF52' in upper:
-        projection = 'fisheye'
-        fov = 190.0
-    elif '_MKX200' in upper:
-        projection = 'fisheye'
-        fov = 200.0
-        lens = 'MKX200'
-    elif '_MKX220' in upper:
-        projection = 'fisheye'
-        fov = 220.0
-        lens = 'MKX220'
-    elif '_FISHEYE' in upper:
-        projection = 'fisheye'
-        fov = 180.0
+    if '_FISHEYE' in upper:
+        screen = 'fisheye'
+    elif '_MKX200' in upper or '_MKX220' in upper:
+        screen = 'mkx200'
+    elif '_RF52' in upper:
+        screen = 'rf52'
     elif '_360' in upper:
-        projection = 'equirectangular360'
-        fov = 360.0
+        screen = 'sphere'
     elif '_FLAT' in upper or '_2D' in upper:
-        projection = 'perspective'
-        stereo = 'mono'
-        fov = 90.0
+        screen = 'flat'
     else:
-        projection = 'equirectangular'  # 180° equirect is the most common VR format
+        screen = 'dome'  # 180° equirect is the most common VR format
 
-    return projection, stereo, fov, lens
+    return screen, stereo
 
 
-# ── GET/POST /heresphere — Library listing ─────────────────────
-@heresphere_bp.route('', methods=['GET', 'POST'])
-@heresphere_bp.route('/', methods=['GET', 'POST'])
+# ── GET/POST /deovr — Library listing ─────────────────────
+@deovr_bp.route('', methods=['GET', 'POST'])
+@deovr_bp.route('/', methods=['GET', 'POST'])
 def library_index():
     """
-    Return the user's RD torrent library in DeoVR/HereSphere JSON format.
+    Return the user's RD torrent library in DeoVR JSON format.
 
-    HereSphere sends a POST request when the Web API button is clicked.
-    We handle both GET and POST so it works from browsers and HereSphere.
+    We handle both GET and POST so it works across different clients.
     """
     # Log everything about the incoming request for debugging
-    logger.info(f"HereSphere library request: {request.method} {request.url}")
-    logger.debug(f"HereSphere headers: {dict(request.headers)}")
+    logger.info(f"DeoVR library request: {request.method} {request.url}")
+    logger.debug(f"DeoVR headers: {dict(request.headers)}")
     if request.data:
         logger.debug(f"HereSphere body: {request.data[:500]}")
 
@@ -123,38 +115,43 @@ def library_index():
         logger.error(f"Failed to fetch torrents for HereSphere library: {e}")
         return jsonify({"error": str(e)}), 500
 
-    # Build the video list as an array of URL strings (HereSphere native format)
+    # Build the video list in DeoVR shortened format
     video_list = []
     for torrent in torrents:
         if torrent.get('status') != 'downloaded':
             continue
 
         torrent_id = torrent.get('id', '')
-        video_list.append(url_for(
-            'heresphere.video_detail',
-            torrent_id=torrent_id,
-            _external=True
-        ))
+        filename = torrent.get('filename', 'Unknown')
+
+        video_list.append({
+            "title": filename,
+            "videoLength": 0,
+            "thumbnailUrl": "",
+            "video_url": url_for(
+                'deovr.video_detail',
+                torrent_id=torrent_id,
+                _external=True
+            ),
+        })
 
     response = {
-        "access": 1,
-        "library": [{
+        "authorized": "1",
+        "scenes": [{
             "name": "Real-Debrid Library",
             "list": video_list,
         }],
     }
 
-    logger.info(f"HereSphere library: returning {len(video_list)} videos")
-    resp = jsonify(response)
-    resp.headers['HereSphere-JSON-Version'] = '1'
-    return resp
+    logger.info(f"DeoVR library: returning {len(video_list)} videos")
+    return jsonify(response)
 
 
-# ── POST /heresphere/<torrent_id> — Video detail ──────────────
-@heresphere_bp.route('/<torrent_id>', methods=['POST', 'GET'])
+# ── POST /deovr/<torrent_id> — Video detail ──────────────
+@deovr_bp.route('/<torrent_id>', methods=['POST', 'GET'])
 def video_detail(torrent_id):
     """
-    Return video detail JSON for a specific torrent.
+    Return video detail JSON for a specific torrent in DeoVR format.
 
     When HereSphere sends needsMediaSource=true, we unrestrict the
     download links and return them as playable video sources.
@@ -164,7 +161,6 @@ def video_detail(torrent_id):
         return jsonify({"error": "API key not configured"}), 500
 
     # Check if HereSphere needs the actual media source
-    # HereSphere does an initial scan with needsMediaSource=False, we can skip link generation
     needs_media = True
     if request.is_json and request.json:
         needs_media = request.json.get('needsMediaSource', True)
@@ -184,19 +180,15 @@ def video_detail(torrent_id):
         return jsonify({"error": "Failed to fetch torrent info"}), 500
 
     filename = torrent_data.get('filename', 'Unknown')
-    projection, stereo, fov, lens = _guess_projection(filename)
+    screen_type, stereo_mode = _guess_projection(filename)
 
     # If HereSphere just needs metadata (not playing yet), return minimal info
     if not needs_media:
         return jsonify({
-            "access": 1,
             "title": filename,
-            "duration": 0,
-            "projection": projection,
-            "stereo": stereo,
-            "fov": fov,
-            "lens": lens,
-            "media": [],
+            "videoLength": 0,
+            "screenType": screen_type,
+            "stereoMode": stereo_mode,
         })
 
     # ── Build video sources from the torrent's files ──────────
@@ -219,15 +211,7 @@ def video_detail(torrent_id):
     # Sort by size descending, filter to video files only
     sorted_files = sorted(selected_files, key=lambda f: f.get('bytes', 0), reverse=True)
 
-    # Default projection if we couldn't guess from the top level name
-    try:
-        if sorted_files:
-            largest_name = sorted_files[0].get('path', '').split('/')[-1]
-            projection, stereo, fov, lens = _guess_projection(largest_name)
-    except:
-        pass
-
-    media_sources = []
+    video_sources = []
     for f in sorted_files:
         fname = f.get('path', '').split('/')[-1]
         if not _is_video(fname):
@@ -237,43 +221,38 @@ def video_detail(torrent_id):
         if not link:
             continue
 
-        media_sources.append({
-            "resolution": "Original",
-            "height": 0,
-            "width": 0,
-            "size": f.get('bytes', 0),
+        video_sources.append({
+            "resolution": 0,  # Unknown; HereSphere handles this
             "url": link,
         })
 
-    if not media_sources:
+    if not video_sources:
         return jsonify({"error": "No playable video files found in this torrent"}), 404
 
-    # Build response in HereSphere native format
+    # Use the largest file's name to guess projection if the torrent name
+    # doesn't have VR indicators
+    if sorted_files:
+        largest_name = sorted_files[0].get('path', '').split('/')[-1]
+        screen_type, stereo_mode = _guess_projection(largest_name)
+
     response = {
-        "access": 1,
         "title": filename,
-        "description": filename,
-        "dateReleased": torrent_data.get('added', '')[:10],
-        "dateAdded": torrent_data.get('added', '')[:10],
-        "duration": 0,
-        "projection": projection,
-        "stereo": stereo,
-        "fov": fov,
-        "lens": lens,
-        "media": [{
-            "name": "Original File",
-            "sources": media_sources,
+        "videoLength": 0,
+        "screenType": screen_type,
+        "stereoMode": stereo_mode,
+        "is3d": stereo_mode != 'off',
+        "encodings": [{
+            "name": "original",
+            "videoSources": video_sources,
         }],
     }
 
-    logger.info(f"HereSphere detail: serving {len(media_sources)} sources for torrent {torrent_id}")
-    resp = jsonify(response)
-    resp.headers['HereSphere-JSON-Version'] = '1'
-    return resp
+    logger.info(f"HereSphere: serving {len(video_sources)} sources for torrent {torrent_id}")
+    return jsonify(response)
 
 
 # ── POST /heresphere/launch_heresphere — PC app launcher ──────
-@heresphere_bp.route('/launch_heresphere', methods=['POST'])
+@deovr_bp.route('/launch_heresphere', methods=['POST'])
 def launch_heresphere():
     """
     Launch HereSphere.exe locally on the PC using the provided video URL.
