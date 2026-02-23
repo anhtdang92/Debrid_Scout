@@ -12,6 +12,11 @@
             </a>
         </li>
         <li>
+            <a href="{{ url_for('heresphere.library_index') }}" class="{% if request.endpoint == 'heresphere.library_index' %}active{% endif %}">
+                <i class="fa-solid fa-vr-cardboard"></i> HereSphere
+            </a>
+        </li>
+        <li>
             <a href="{{ url_for('info.about') }}" class="{% if request.endpoint == 'info.about' %}active{% endif %}">
                 <i class="fa-solid fa-info-circle"></i> About
             </a>

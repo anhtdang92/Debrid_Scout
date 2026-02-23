@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}HereSphere Library{% endblock %}
+
+{% block content %}
+<h2><i class="fa-solid fa-vr-cardboard"></i> HereSphere Library</h2>
+
+<!-- Connection Banner -->
+{% if hs_url %}
+<div class="hs-banner">
+    <div class="hs-banner-icon">
+        <i class="fa-solid fa-link"></i>
+    </div>
+    <div class="hs-banner-body">
+        <p class="hs-banner-title">Connect from your headset</p>
+        <p class="hs-banner-instruction">Enter this URL in HereSphere's built-in browser:</p>
+        <div class="hs-banner-url-row">
+            <code class="hs-banner-url" id="hs-url">{{ hs_url }}</code>
+            <button class="button hs-copy-btn" data-action="copy-hs-url" title="Copy to clipboard">
+                <i class="fa-solid fa-copy"></i> Copy
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="error-message">
+    <i class="fa-solid fa-exclamation-triangle"></i> {{ error }}
+</div>
+{% endif %}
+
+<!-- Search / Filter -->
+<div class="hs-toolbar">
+    <div class="hs-search-wrap">
+        <i class="fa-solid fa-magnifying-glass hs-search-icon"></i>
+        <input type="text" id="hs-search" class="hs-search" placeholder="Filter library..." autocomplete="off">
+    </div>
+    <span class="hs-count" id="hs-count">{{ videos|length }} video{{ 's' if videos|length != 1 else '' }}</span>
+</div>
+
+<!-- Card Grid -->
+{% if videos %}
+<div class="hs-grid" id="hs-grid">
+    {% for v in videos %}
+    <div class="hs-card" data-id="{{ v.id }}">
+        <div class="hs-card-header">
+            <span class="hs-badge">{{ v.projection_label }}</span>
+            {% if v.added %}
+            <span class="hs-date">{{ v.added }}</span>
+            {% endif %}
+        </div>
+        <div class="hs-card-body">
+            <h4 class="hs-card-title" title="{{ v.raw_name }}">{{ v.name }}</h4>
+            <div class="hs-card-meta">
+                <span><i class="fa-solid fa-hard-drive"></i> {{ v.size }}</span>
+                {% if v.links_count %}
+                <span><i class="fa-solid fa-file-video"></i> {{ v.links_count }} file{{ 's' if v.links_count != 1 else '' }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="hs-card-actions">
+            <button class="button hs-action-btn" data-action="hs-launch" data-id="{{ v.id }}" title="Launch in HereSphere">
+                <i class="fa-solid fa-vr-cardboard"></i> HereSphere
+            </button>
+            <button class="button hs-action-btn" data-action="hs-vlc" data-id="{{ v.id }}" title="Launch in VLC">
+                <i class="fa-solid fa-play"></i> VLC
+            </button>
+            <button class="button hs-action-btn hs-files-btn" data-action="show-files" data-id="{{ v.id }}" title="Browse files">
+                <i class="fa-solid fa-folder-open"></i> Files
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<p class="hs-no-match" id="hs-no-match" style="display:none;">No videos match your filter.</p>
+{% else %}
+<div class="hs-empty">
+    <i class="fa-solid fa-film"></i>
+    <p>No downloaded torrents found in your Real-Debrid library.</p>
+    <p>Search for content on the <a href="{{ url_for('search.index') }}">Search</a> page to get started.</p>
+</div>
+{% endif %}
+
+<!-- Reuse the RD Manager modal for file browsing -->
+<div class="rd-modal" id="rdModal">
+    <div class="rd-modal-content">
+        <span class="rd-close" data-action="close-modal" data-id="rdModal">&times;</span>
+        <h3 id="modal-files-title">Files in Torrent</h3>
+        <ul id="files-list"></ul>
+    </div>
+</div>
+{% endblock %}

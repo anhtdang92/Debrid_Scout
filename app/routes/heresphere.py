@@ -11,13 +11,15 @@ Usage:
   Open HereSphere → enter http://<your-ip>:5000/heresphere in the browser
 """
 
-from flask import Blueprint, jsonify, request, current_app, url_for
+from flask import Blueprint, jsonify, request, current_app, url_for, render_template
 import logging
 import os
 import shutil
 import requests
 import subprocess
+from datetime import datetime, timedelta, timezone
 from app.services.real_debrid import RealDebridService, RealDebridError
+from app.services.file_helper import FileHelper
 
 # Known install paths for HereSphere (searched via PowerShell)
 _HERESPHERE_PATHS = [
@@ -96,17 +98,87 @@ def _guess_projection(filename):
     return projection, stereo, fov, lens
 
 
+def _projection_label(projection, stereo, fov):
+    """Return a short human-readable label like '180° SBS' or 'Fisheye 200°'."""
+    proj_map = {
+        'equirectangular': '180°',
+        'equirectangular360': '360°',
+        'fisheye': f'Fisheye {int(fov)}°',
+        'perspective': 'Flat 2D',
+    }
+    label = proj_map.get(projection, projection)
+    if projection != 'perspective':
+        label += ' ' + stereo.upper()
+    return label
+
+
+def _wants_html():
+    """Return True when the caller is a normal browser (not HereSphere / API)."""
+    if request.method == 'POST':
+        return False
+    accept = request.headers.get('Accept', '')
+    return 'text/html' in accept
+
+
+def _build_tags(projection, stereo, fov, lens, video_file_count=0, total_bytes=0):
+    """Build HereSphere-style structured tags for filtering in the native UI."""
+    tags = []
+
+    # Projection / FOV tags
+    fov_labels = {
+        'equirectangular': 'FOV: 180°',
+        'equirectangular360': 'FOV: 360°',
+        'perspective': 'Flat video',
+    }
+    if projection == 'fisheye':
+        tags.append({"name": f"Feature:FOV: {int(fov)}° Fisheye"})
+    elif projection in fov_labels:
+        tags.append({"name": f"Feature:{fov_labels[projection]}"})
+
+    # Stereo mode
+    stereo_labels = {'sbs': 'SBS', 'tb': 'Top-Bottom', 'mono': 'Mono'}
+    if stereo in stereo_labels:
+        tags.append({"name": f"Feature:{stereo_labels[stereo]}"})
+
+    # Lens
+    if lens and lens not in ('Linear',):
+        tags.append({"name": f"Feature:Lens: {lens}"})
+
+    # File count
+    if video_file_count > 1:
+        tags.append({"name": "Feature:Multiple video files"})
+
+    # Size tier
+    gb = total_bytes / (1024 ** 3) if total_bytes else 0
+    if gb >= 15:
+        tags.append({"name": "Feature:Size: 15 GB+"})
+    elif gb >= 5:
+        tags.append({"name": "Feature:Size: 5-15 GB"})
+    elif gb >= 1:
+        tags.append({"name": "Feature:Size: 1-5 GB"})
+
+    return tags
+
+
+def _parse_rd_date(date_str):
+    """Parse an RD API date string into a datetime, or return None."""
+    if not date_str:
+        return None
+    try:
+        return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        return None
+
+
 # ── GET/POST /heresphere — Library listing ─────────────────────
 @heresphere_bp.route('', methods=['GET', 'POST'])
 @heresphere_bp.route('/', methods=['GET', 'POST'])
 def library_index():
     """
-    Return the user's RD torrent library in DeoVR/HereSphere JSON format.
+    Return the user's RD torrent library.
 
-    HereSphere sends a POST request when the Web API button is clicked.
-    We handle both GET and POST so it works from browsers and HereSphere.
+    Browsers get a rendered HTML page; HereSphere / API clients get JSON.
     """
-    # Log everything about the incoming request for debugging
     logger.info(f"HereSphere library request: {request.method} {request.url}")
     logger.debug(f"HereSphere headers: {dict(request.headers)}")
     if request.data:
@@ -114,6 +186,8 @@ def library_index():
 
     api_key = current_app.config.get('REAL_DEBRID_API_KEY')
     if not api_key:
+        if _wants_html():
+            return render_template('heresphere.html', error="Real-Debrid API key not configured", videos=[])
         return jsonify({"error": "Real-Debrid API key not configured"}), 500
 
     try:
@@ -121,30 +195,72 @@ def library_index():
         torrents = service.get_all_torrents()
     except RealDebridError as e:
         logger.error(f"Failed to fetch torrents for HereSphere library: {e}")
+        if _wants_html():
+            return render_template('heresphere.html', error=str(e), videos=[])
         return jsonify({"error": str(e)}), 500
 
-    # Build the video list as an array of URL strings (HereSphere native format)
-    video_list = []
+    # ── Browser HTML view ──────────────────────────────────────
+    if _wants_html():
+        videos = []
+        for t in torrents:
+            if t.get('status') != 'downloaded':
+                continue
+            filename = t.get('filename', 'Unknown')
+            projection, stereo, fov, _lens = _guess_projection(filename)
+            total_bytes = t.get('bytes', 0) or 0
+            videos.append({
+                'id': t.get('id', ''),
+                'name': FileHelper.simplify_filename(filename),
+                'raw_name': filename,
+                'projection_label': _projection_label(projection, stereo, fov),
+                'size': FileHelper.format_file_size(total_bytes),
+                'added': (t.get('added') or '')[:10],
+                'links_count': len(t.get('links') or []),
+            })
+
+        hs_url = url_for('heresphere.library_index', _external=True)
+        return render_template('heresphere.html', videos=videos, hs_url=hs_url, error=None)
+
+    # ── HereSphere / API JSON view ─────────────────────────────
+    now = datetime.now(timezone.utc)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    recent, this_month, older = [], [], []
+
     for torrent in torrents:
         if torrent.get('status') != 'downloaded':
             continue
 
         torrent_id = torrent.get('id', '')
-        video_list.append(url_for(
+        detail_url = url_for(
             'heresphere.video_detail',
             torrent_id=torrent_id,
             _external=True
-        ))
+        )
 
-    response = {
-        "access": 1,
-        "library": [{
-            "name": "Real-Debrid Library",
-            "list": video_list,
-        }],
-    }
+        added = _parse_rd_date(torrent.get('added'))
+        if added and added >= week_ago:
+            recent.append(detail_url)
+        elif added and added >= month_ago:
+            this_month.append(detail_url)
+        else:
+            older.append(detail_url)
 
-    logger.info(f"HereSphere library: returning {len(video_list)} videos")
+    library = []
+    if recent:
+        library.append({"name": "Recently Added", "list": recent})
+    if this_month:
+        library.append({"name": "This Month", "list": this_month})
+    if older:
+        library.append({"name": "Older", "list": older})
+    if not library:
+        library.append({"name": "Real-Debrid Library", "list": []})
+
+    total = len(recent) + len(this_month) + len(older)
+    response = {"access": 1, "library": library}
+
+    logger.info(f"HereSphere library: returning {total} videos in {len(library)} sections")
     resp = jsonify(response)
     resp.headers['HereSphere-JSON-Version'] = '1'
     return resp
@@ -163,8 +279,6 @@ def video_detail(torrent_id):
     if not api_key:
         return jsonify({"error": "API key not configured"}), 500
 
-    # Check if HereSphere needs the actual media source
-    # HereSphere does an initial scan with needsMediaSource=False, we can skip link generation
     needs_media = True
     if request.is_json and request.json:
         needs_media = request.json.get('needsMediaSource', True)
@@ -172,7 +286,6 @@ def video_detail(torrent_id):
     headers = {'Authorization': f'Bearer {api_key}'}
 
     try:
-        # Fetch torrent info from RD
         resp = requests.get(
             f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
             headers=headers
@@ -184,27 +297,51 @@ def video_detail(torrent_id):
         return jsonify({"error": "Failed to fetch torrent info"}), 500
 
     filename = torrent_data.get('filename', 'Unknown')
-    projection, stereo, fov, lens = _guess_projection(filename)
+    files = torrent_data.get('files') or []
+    links = torrent_data.get('links') or []
+    selected_files = [f for f in files if f.get('selected') == 1]
 
-    # If HereSphere just needs metadata (not playing yet), return minimal info
+    # Count video files and total size for metadata
+    video_files = []
+    for f in selected_files:
+        fname = f.get('path', '').split('/')[-1]
+        if _is_video(fname):
+            video_files.append(f)
+
+    total_bytes = sum(f.get('bytes', 0) for f in video_files)
+
+    # Guess projection from the largest video file name, fall back to torrent name
+    projection, stereo, fov, lens = _guess_projection(filename)
+    if video_files:
+        sorted_by_size = sorted(video_files, key=lambda f: f.get('bytes', 0), reverse=True)
+        largest_name = sorted_by_size[0].get('path', '').split('/')[-1]
+        projection, stereo, fov, lens = _guess_projection(largest_name)
+
+    title = FileHelper.simplify_filename(filename)
+    date_added = (torrent_data.get('added') or '')[:10]
+    description = f"{len(video_files)} file{'s' if len(video_files) != 1 else ''} — {FileHelper.format_file_size(total_bytes)}"
+    tags = _build_tags(projection, stereo, fov, lens, len(video_files), total_bytes)
+
+    # ── Metadata-only response (initial library scan) ─────────
     if not needs_media:
-        return jsonify({
+        resp = jsonify({
             "access": 1,
-            "title": filename,
+            "title": title,
+            "description": description,
+            "dateReleased": date_added,
+            "dateAdded": date_added,
             "duration": 0,
             "projection": projection,
             "stereo": stereo,
             "fov": fov,
             "lens": lens,
+            "tags": tags,
             "media": [],
         })
+        resp.headers['HereSphere-JSON-Version'] = '1'
+        return resp
 
-    # ── Build video sources from the torrent's files ──────────
-    files = torrent_data.get('files', [])
-    links = torrent_data.get('links', [])
-    selected_files = [f for f in files if f.get('selected') == 1]
-
-    # Unrestrict all links
+    # ── Full response with playable sources ───────────────────
     service = RealDebridService(api_key=api_key)
     unrestricted_links = []
     for link in links:
@@ -213,60 +350,51 @@ def video_detail(torrent_id):
         except RealDebridError:
             unrestricted_links.append(link)
 
-    # Map file IDs to unrestricted links
-    link_map = {f['id']: link for f, link in zip(selected_files, unrestricted_links)}
+    link_map = {}
+    for f, link in zip(selected_files, unrestricted_links):
+        fid = f.get('id')
+        if fid is not None and link:
+            link_map[fid] = link
 
-    # Sort by size descending, filter to video files only
-    sorted_files = sorted(selected_files, key=lambda f: f.get('bytes', 0), reverse=True)
-
-    # Default projection if we couldn't guess from the top level name
-    try:
-        if sorted_files:
-            largest_name = sorted_files[0].get('path', '').split('/')[-1]
-            projection, stereo, fov, lens = _guess_projection(largest_name)
-    except:
-        pass
-
-    media_sources = []
-    for f in sorted_files:
-        fname = f.get('path', '').split('/')[-1]
-        if not _is_video(fname):
-            continue
-
+    # Build one media entry per video file (XBVR style: "File 1/N - size")
+    media_entries = []
+    video_idx = 0
+    for f in sorted(video_files, key=lambda f: f.get('bytes', 0), reverse=True):
         link = link_map.get(f.get('id'))
         if not link:
             continue
-
-        media_sources.append({
-            "resolution": "Original",
-            "height": 0,
-            "width": 0,
-            "size": f.get('bytes', 0),
-            "url": link,
+        video_idx += 1
+        size_label = FileHelper.format_file_size(f.get('bytes', 0))
+        media_entries.append({
+            "name": f"File {video_idx}/{len(video_files)} — {size_label}",
+            "sources": [{
+                "resolution": "Original",
+                "height": 0,
+                "width": 0,
+                "size": f.get('bytes', 0),
+                "url": link,
+            }],
         })
 
-    if not media_sources:
+    if not media_entries:
         return jsonify({"error": "No playable video files found in this torrent"}), 404
 
-    # Build response in HereSphere native format
     response = {
         "access": 1,
-        "title": filename,
-        "description": filename,
-        "dateReleased": torrent_data.get('added', '')[:10],
-        "dateAdded": torrent_data.get('added', '')[:10],
+        "title": title,
+        "description": description,
+        "dateReleased": date_added,
+        "dateAdded": date_added,
         "duration": 0,
         "projection": projection,
         "stereo": stereo,
         "fov": fov,
         "lens": lens,
-        "media": [{
-            "name": "Original File",
-            "sources": media_sources,
-        }],
+        "tags": tags,
+        "media": media_entries,
     }
 
-    logger.info(f"HereSphere detail: serving {len(media_sources)} sources for torrent {torrent_id}")
+    logger.info(f"HereSphere detail: serving {len(media_entries)} sources for torrent {torrent_id}")
     resp = jsonify(response)
     resp.headers['HereSphere-JSON-Version'] = '1'
     return resp

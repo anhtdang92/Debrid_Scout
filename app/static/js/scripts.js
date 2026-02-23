@@ -88,13 +88,13 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!btn) return;
 
     var action = btn.getAttribute("data-action");
-    var url = btn.getAttribute("data-url") || "";
+    var rawUrl = btn.getAttribute("data-url");
+    var url = (rawUrl && rawUrl !== "null") ? rawUrl : "";
     var id = btn.getAttribute("data-id") || "";
 
     switch (action) {
       case "download":
         if (url) {
-          // Unrestrict the link on-demand, then open the direct download
           btn.disabled = true;
           var origHTML = btn.innerHTML;
           btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
@@ -103,14 +103,24 @@ document.addEventListener("DOMContentLoaded", function () {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ link: url })
           })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-              var dlUrl = data.unrestricted_link || url;
-              if (dlUrl && isValidUrl(dlUrl)) window.open(dlUrl, "_blank");
+            .then(function (r) {
+              if (!r.ok) {
+                return r.json().then(function (d) {
+                  throw new Error(d.error || "Failed to unrestrict link");
+                });
+              }
+              return r.json();
             })
-            .catch(function () {
-              // Fallback: try opening the original URL
-              if (isValidUrl(url)) window.open(url, "_blank");
+            .then(function (data) {
+              var dlUrl = data.unrestricted_link;
+              if (dlUrl && isValidUrl(dlUrl)) {
+                window.open(dlUrl, "_blank");
+              } else {
+                alert("Could not generate a download link. The link may have expired.");
+              }
+            })
+            .catch(function (err) {
+              alert("Download error: " + err.message);
             })
             .finally(function () {
               btn.innerHTML = origHTML;
@@ -129,9 +139,22 @@ document.addEventListener("DOMContentLoaded", function () {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ link: url })
           })
-            .then(function (r) { return r.json(); })
-            .then(function (data) { launchVLC(data.unrestricted_link || url); })
-            .catch(function () { launchVLC(url); })
+            .then(function (r) {
+              if (!r.ok) {
+                return r.json().then(function (d) {
+                  throw new Error(d.error || "Failed to unrestrict link");
+                });
+              }
+              return r.json();
+            })
+            .then(function (data) {
+              if (data.unrestricted_link && isValidUrl(data.unrestricted_link)) {
+                launchVLC(data.unrestricted_link);
+              } else {
+                alert("Could not generate a VLC link. The link may have expired.");
+              }
+            })
+            .catch(function (err) { alert("VLC error: " + err.message); })
             .finally(function () { btn.innerHTML = vlcOrigHTML; btn.disabled = false; });
         }
         break;
@@ -146,11 +169,36 @@ document.addEventListener("DOMContentLoaded", function () {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ link: url })
           })
-            .then(function (r) { return r.json(); })
-            .then(function (data) { launchHeresphere(data.unrestricted_link || url); })
-            .catch(function () { launchHeresphere(url); })
+            .then(function (r) {
+              if (!r.ok) {
+                return r.json().then(function (d) {
+                  throw new Error(d.error || "Failed to unrestrict link");
+                });
+              }
+              return r.json();
+            })
+            .then(function (data) {
+              if (data.unrestricted_link && isValidUrl(data.unrestricted_link)) {
+                launchHeresphere(data.unrestricted_link);
+              } else {
+                alert("Could not generate a HereSphere link. The link may have expired.");
+              }
+            })
+            .catch(function (err) { alert("HereSphere error: " + err.message); })
             .finally(function () { btn.innerHTML = hsOrigHTML; btn.disabled = false; });
         }
+        break;
+
+      case "copy-hs-url":
+        hsPageCopyUrl();
+        break;
+
+      case "hs-launch":
+        hsPageLaunch(id, "heresphere", btn);
+        break;
+
+      case "hs-vlc":
+        hsPageLaunch(id, "vlc", btn);
         break;
 
       case "open-file-modal":
@@ -337,7 +385,11 @@ function showFiles(torrentId) {
 
   fetch("/torrent/torrents/" + encodeURIComponent(torrentId))
     .then(function (response) {
-      if (!response.ok) throw new Error("Network response was not ok");
+      if (!response.ok) {
+        return response.json().then(function (errData) {
+          throw new Error(errData.error || "Server returned " + response.status);
+        });
+      }
       return response.json();
     })
     .then(function (data) {
@@ -346,6 +398,19 @@ function showFiles(torrentId) {
       if (!Array.isArray(data.files)) {
         filesList.innerHTML = "<li><strong>Error: No files data found.</strong></li>";
         return;
+      }
+
+      // Show status banner when torrent isn't fully downloaded
+      var status = (data.status || "").toLowerCase();
+      if (status && status !== "downloaded") {
+        var statusLi = document.createElement("li");
+        statusLi.style.cssText = "color:#f39c12;margin-bottom:12px;font-weight:bold;";
+        var statusText = "Status: " + data.status;
+        if (data.progress !== undefined && data.progress < 100) {
+          statusText += " (" + data.progress + "%)";
+        }
+        statusLi.textContent = statusText + " — links may not be available yet.";
+        filesList.appendChild(statusLi);
       }
 
       var validFiles = data.files.filter(function (f) { return f.size !== "0.00 GB"; });
@@ -376,32 +441,39 @@ function showFiles(torrentId) {
         var actions = document.createElement("div");
         actions.className = "file-actions";
 
-        // Download button
-        var dlBtn = document.createElement("button");
-        dlBtn.className = "button";
-        dlBtn.setAttribute("data-action", "download");
-        dlBtn.setAttribute("data-url", file.link);
-        dlBtn.innerHTML = '<i class="fa-solid fa-download"></i> Download';
-        actions.appendChild(dlBtn);
+        if (file.link) {
+          // Download button
+          var dlBtn = document.createElement("button");
+          dlBtn.className = "button";
+          dlBtn.setAttribute("data-action", "download");
+          dlBtn.setAttribute("data-url", file.link);
+          dlBtn.innerHTML = '<i class="fa-solid fa-download"></i> Download';
+          actions.appendChild(dlBtn);
 
-        if (isVideo) {
-          // VLC button
-          var vlcBtn = document.createElement("button");
-          vlcBtn.className = "button";
-          vlcBtn.setAttribute("data-action", "vlc");
-          vlcBtn.setAttribute("data-url", file.link);
-          vlcBtn.innerHTML = '<i class="fa-solid fa-play"></i> VLC';
-          vlcBtn.style.marginLeft = "10px";
-          actions.appendChild(vlcBtn);
+          if (isVideo) {
+            // VLC button
+            var vlcBtn = document.createElement("button");
+            vlcBtn.className = "button";
+            vlcBtn.setAttribute("data-action", "vlc");
+            vlcBtn.setAttribute("data-url", file.link);
+            vlcBtn.innerHTML = '<i class="fa-solid fa-play"></i> VLC';
+            vlcBtn.style.marginLeft = "10px";
+            actions.appendChild(vlcBtn);
 
-          // HereSphere button
-          var hsBtn = document.createElement("button");
-          hsBtn.className = "button";
-          hsBtn.setAttribute("data-action", "heresphere");
-          hsBtn.setAttribute("data-url", file.link);
-          hsBtn.innerHTML = '<i class="fa-solid fa-vr-cardboard"></i> HereSphere';
-          hsBtn.style.marginLeft = "10px";
-          actions.appendChild(hsBtn);
+            // HereSphere button
+            var hsBtn = document.createElement("button");
+            hsBtn.className = "button";
+            hsBtn.setAttribute("data-action", "heresphere");
+            hsBtn.setAttribute("data-url", file.link);
+            hsBtn.innerHTML = '<i class="fa-solid fa-vr-cardboard"></i> HereSphere';
+            hsBtn.style.marginLeft = "10px";
+            actions.appendChild(hsBtn);
+          }
+        } else {
+          var noLink = document.createElement("span");
+          noLink.style.color = "#999";
+          noLink.textContent = "No link available";
+          actions.appendChild(noLink);
         }
 
         fileInfo.appendChild(actions);
@@ -807,3 +879,122 @@ function finishStreamingSearch() {
   document.getElementById("progress-spinner").style.display = "none";
   currentSearchId = null;
 }
+
+// ──────────────────────────────────────────────────────────────
+// HereSphere Library Page helpers
+// ──────────────────────────────────────────────────────────────
+
+function hsPageCopyUrl() {
+  var urlEl = document.getElementById("hs-url");
+  if (!urlEl) return;
+  var text = urlEl.textContent;
+  navigator.clipboard.writeText(text).then(function () {
+    var copyBtn = document.querySelector('[data-action="copy-hs-url"]');
+    if (copyBtn) {
+      var orig = copyBtn.innerHTML;
+      copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+      setTimeout(function () { copyBtn.innerHTML = orig; }, 1500);
+    }
+  }).catch(function () {
+    window.prompt("Copy this URL:", text);
+  });
+}
+
+/**
+ * Fetch the first video link from a torrent and launch it via HereSphere or VLC.
+ * @param {string} torrentId  RD torrent ID
+ * @param {string} target     "heresphere" or "vlc"
+ * @param {HTMLElement} btn   the button element (for loading state)
+ */
+function hsPageLaunch(torrentId, target, btn) {
+  if (!torrentId) return;
+  var origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+  fetch("/torrent/torrents/" + encodeURIComponent(torrentId))
+    .then(function (r) {
+      if (!r.ok) throw new Error("Failed to fetch torrent details");
+      return r.json();
+    })
+    .then(function (data) {
+      var files = (data.files || []).filter(function (f) { return f.link; });
+      files.sort(function (a, b) {
+        var sa = parseFloat(a.size) || 0;
+        var sb = parseFloat(b.size) || 0;
+        return sb - sa;
+      });
+      var videoFile = files.find(function (f) {
+        return window.videoExtensions && window.videoExtensions.some(function (ext) {
+          return f.name.toLowerCase().endsWith(ext);
+        });
+      });
+      var link = videoFile ? videoFile.link : (files.length ? files[0].link : null);
+      if (!link) throw new Error("No playable link found in this torrent");
+
+      return fetch("/torrent/unrestrict_link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ link: link })
+      });
+    })
+    .then(function (r) {
+      if (!r.ok) {
+        return r.json().then(function (d) {
+          throw new Error(d.error || "Failed to unrestrict link");
+        });
+      }
+      return r.json();
+    })
+    .then(function (data) {
+      var url = data.unrestricted_link;
+      if (!url || !isValidUrl(url)) {
+        throw new Error("Could not generate a playable link");
+      }
+      if (target === "heresphere") {
+        // Use the heresphere:// protocol to send the video to the
+        // already-running HereSphere instance instead of spawning a new one.
+        window.location.href = "heresphere://" + url;
+      } else {
+        launchVLC(url);
+      }
+    })
+    .catch(function (err) {
+      alert("Launch error: " + err.message);
+    })
+    .finally(function () {
+      btn.innerHTML = origHTML;
+      btn.disabled = false;
+    });
+}
+
+// Client-side search filter for HereSphere library cards
+document.addEventListener("DOMContentLoaded", function () {
+  var searchInput = document.getElementById("hs-search");
+  if (!searchInput) return;
+
+  searchInput.addEventListener("input", function () {
+    var term = this.value.toLowerCase().trim();
+    var grid = document.getElementById("hs-grid");
+    var noMatch = document.getElementById("hs-no-match");
+    var countEl = document.getElementById("hs-count");
+    if (!grid) return;
+
+    var cards = grid.querySelectorAll(".hs-card");
+    var visible = 0;
+
+    cards.forEach(function (card) {
+      var title = (card.querySelector(".hs-card-title") || {}).textContent || "";
+      var match = title.toLowerCase().indexOf(term) !== -1;
+      card.style.display = match ? "" : "none";
+      if (match) visible++;
+    });
+
+    if (countEl) {
+      countEl.textContent = visible + " video" + (visible !== 1 ? "s" : "");
+    }
+    if (noMatch) {
+      noMatch.style.display = (visible === 0 && term) ? "block" : "none";
+    }
+  });
+});

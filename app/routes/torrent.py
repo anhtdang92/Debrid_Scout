@@ -100,14 +100,19 @@ def get_torrent_details(torrent_id):
         response.raise_for_status()
         torrent_data = response.json()
 
-        files = torrent_data.get('files', [])
-        links = torrent_data.get('links', [])
+        files = torrent_data.get('files') or []
+        links = torrent_data.get('links') or []
         selected_files = [f for f in files if f.get('selected') == 1]
 
         # Map selected files to their restricted links (do NOT unrestrict here —
         # that's slow and blocks the browser).  The frontend will call
         # /torrent/unrestrict_link on-demand when the user clicks Download.
-        link_mapping = {f['id']: link for f, link in zip(selected_files, links)}
+        link_mapping = {}
+        for f, link in zip(selected_files, links):
+            fid = f.get('id')
+            if fid is not None and link:
+                link_mapping[fid] = link
+
         sorted_files = sorted(selected_files, key=lambda f: f.get('bytes', 0), reverse=True)
 
         processed_files = []
@@ -119,7 +124,7 @@ def get_torrent_details(torrent_id):
                 "id": file_id,
                 "name": file_name,
                 "size": file_size,
-                "link": link_mapping.get(file_id)
+                "link": link_mapping.get(file_id, "")
             })
 
         return jsonify({
@@ -134,6 +139,9 @@ def get_torrent_details(torrent_id):
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching torrent info from Real-Debrid API: {e}")
         return jsonify({'error': 'Failed to retrieve file information'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error processing torrent {torrent_id}: {e}")
+        return jsonify({'error': 'Failed to process torrent data'}), 500
 
 
 @torrent_bp.route('/delete_torrents', methods=['POST'])
