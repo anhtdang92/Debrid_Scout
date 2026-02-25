@@ -402,14 +402,20 @@ function showFiles(torrentId) {
 
       // Show status banner when torrent isn't fully downloaded
       var status = (data.status || "").toLowerCase();
+      var errorStatuses = ["error", "magnet_error", "virus", "dead"];
       if (status && status !== "downloaded") {
         var statusLi = document.createElement("li");
-        statusLi.style.cssText = "color:#f39c12;margin-bottom:12px;font-weight:bold;";
         var statusText = "Status: " + data.status;
         if (data.progress !== undefined && data.progress < 100) {
           statusText += " (" + data.progress + "%)";
         }
-        statusLi.textContent = statusText + " — links may not be available yet.";
+        if (errorStatuses.indexOf(status) !== -1) {
+          statusLi.style.cssText = "color:#e74c3c;margin-bottom:12px;font-weight:bold;";
+          statusLi.textContent = statusText + " — this torrent has failed. Delete it and try again.";
+        } else {
+          statusLi.style.cssText = "color:#f39c12;margin-bottom:12px;font-weight:bold;";
+          statusLi.textContent = statusText + " — links may not be available yet.";
+        }
         filesList.appendChild(statusLi);
       }
 

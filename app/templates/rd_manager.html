@@ -37,13 +37,25 @@
             <td>
                 {% if torrent.status == "downloaded" %}
                 <i class="fa-solid fa-check downloaded-check" title="Downloaded" aria-label="Downloaded"></i>
-                {% else %}
-                <span style="color: #f39c12; font-weight: bold;">
-                    {% if torrent.status == "downloading" %}
-                    <i class="fa-solid fa-spinner fa-spin"></i> Downloading ({{ torrent.progress }}%)
+                {% elif torrent.status in ["error", "magnet_error", "virus", "dead"] %}
+                <span class="status-error">
+                    {% if torrent.status == "virus" %}
+                    <i class="fa-solid fa-skull-crossbones"></i> Virus Detected
+                    {% elif torrent.status == "dead" %}
+                    <i class="fa-solid fa-skull"></i> Dead (No Seeders)
+                    {% elif torrent.status == "magnet_error" %}
+                    <i class="fa-solid fa-link-slash"></i> Magnet Error
                     {% else %}
-                    <i class="fa-solid fa-clock"></i> {{ torrent.status | title }}
+                    <i class="fa-solid fa-circle-exclamation"></i> Error
                     {% endif %}
+                </span>
+                {% elif torrent.status == "downloading" %}
+                <span class="status-progress">
+                    <i class="fa-solid fa-spinner fa-spin"></i> Downloading ({{ torrent.progress }}%)
+                </span>
+                {% else %}
+                <span class="status-progress">
+                    <i class="fa-solid fa-clock"></i> {{ torrent.status | title }}
                 </span>
                 {% endif %}
             </td>

@@ -984,6 +984,18 @@ input:focus {
     vertical-align: middle;
 }
 
+/* Error/Fatal Status (error, virus, dead, magnet_error) */
+.status-error {
+    color: #e74c3c;
+    font-weight: bold;
+}
+
+/* In-Progress Status (downloading, queued, etc.) */
+.status-progress {
+    color: #f39c12;
+    font-weight: bold;
+}
+
 /* Search Bar Container */
 .search-container {
     position: relative;
