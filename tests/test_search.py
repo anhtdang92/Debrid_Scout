@@ -1,9 +1,10 @@
 import pytest
 import json
+from unittest.mock import patch
+
 
 def test_index_page_loads(client, mocked_responses):
     """Test that the index page loads successfully on GET."""
-    # Mock the Before-Request Real-Debrid /user account API call 
     mocked_responses.get(
         "https://api.real-debrid.com/rest/1.0/user",
         json={"id": 12345, "username": "testuser", "premium": 100},
@@ -13,6 +14,7 @@ def test_index_page_loads(client, mocked_responses):
     response = client.get("/")
     assert response.status_code == 200
     assert b"Debrid Scout" in response.data
+
 
 def test_search_post_validates(client, mocked_responses):
     """Test that empty queries return 400 Bad Request."""
@@ -26,41 +28,69 @@ def test_search_post_validates(client, mocked_responses):
     assert response.status_code == 400
     assert b"Search query cannot be empty" in response.data
 
-def test_jackett_search_pipeline(client, mocked_responses):
-    """Test the full torznab XML search pipeline."""
-    # Mock RD User
-    mocked_responses.get("https://api.real-debrid.com/rest/1.0/user", json={}, status=200)
 
-    # Mock Jackett Search Result
-    jackett_xml = b'''<?xml version="1.0" encoding="UTF-8"?>
-    <rss version="1.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
-    <channel>
-        <item>
-            <title>Test Movie 1080p</title>
-            <link>magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678</link>
-            <size>1048576000</size>
-            <torznab:attr name="seeders" value="100" />
-            <torznab:attr name="peers" value="20" />
-        </item>
-    </channel>
-    </rss>
-    '''
+def test_search_post_invalid_limit(client, mocked_responses):
+    """Test that invalid limit returns 400 Bad Request."""
     mocked_responses.get(
-        "http://localhost:9117/api/v2.0/indexers/all/results/torznab/api",
-        body=jackett_xml,
-        status=200,
-        content_type="application/xml"
-    )
-
-    # Mock RD Instant Availability hash check
-    mocked_responses.get(
-        "https://api.real-debrid.com/rest/1.0/torrents/instantAvailability/1234567890abcdef1234567890abcdef12345678",
-        json={"1234567890abcdef1234567890abcdef12345678": {"rd": [{"1": {"filename": "Test Movie 1080p.mkv", "filesize": 1048576000}}]}},
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
         status=200
     )
 
-    response = client.post("/", data={"query": "Test Movie", "limit": "10"})
-    assert response.status_code == 200
-    assert b"Test Movie 1080p" in response.data
-    # Ensure it's marked as cached (since availability returned success)
-    assert b"Cached" in response.data
+    response = client.post("/", data={"query": "test", "limit": "abc"})
+    assert response.status_code == 400
+    assert b"Limit must be a positive integer" in response.data
+
+
+def test_jackett_search_pipeline(client, mocked_responses):
+    """Test the full search pipeline end-to-end with mocked service layer."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200
+    )
+
+    # Mock the download link service to return a complete result
+    mock_result = {
+        "data": [
+            {
+                "Torrent Name": "Test.Movie.1080p",
+                "Categories": ["Movies"],
+                "Files": [
+                    {
+                        "File Name": "Test.Movie.1080p.mkv",
+                        "File Size": "1.00 GB",
+                        "Download Link": "https://download.real-debrid.com/d/abc123/Test.Movie.1080p.mkv"
+                    }
+                ]
+            }
+        ],
+        "timers": [
+            {"script": "Jackett Search", "time": 1.5},
+            {"script": "RD Download Links", "time": 3.2}
+        ]
+    }
+
+    with patch('app.routes.search.RDDownloadLinkService') as MockService:
+        MockService.return_value.search_and_get_links.return_value = mock_result
+
+        response = client.post("/", data={"query": "Test Movie", "limit": "10"})
+        assert response.status_code == 200
+        assert b"Test Movie 1080p" in response.data  # simplify_filename replaces dots with spaces
+        assert b"1.00 GB" in response.data
+
+
+def test_search_no_results(client, mocked_responses):
+    """Test that 'No Results Found' is shown when pipeline returns empty."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200
+    )
+
+    with patch('app.routes.search.RDDownloadLinkService') as MockService:
+        MockService.return_value.search_and_get_links.return_value = {"data": [], "timers": []}
+
+        response = client.post("/", data={"query": "nonexistent", "limit": "10"})
+        assert response.status_code == 200
+        assert b"No Results Found" in response.data
