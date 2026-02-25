@@ -13,20 +13,13 @@ Usage:
 
 from flask import Blueprint, jsonify, request, current_app, url_for, render_template
 import logging
-import os
-import shutil
 import requests
-import subprocess
 from datetime import datetime, timedelta, timezone
 from app.services.real_debrid import RealDebridService, RealDebridError
 from app.services.file_helper import FileHelper
-
-# Known install paths for HereSphere (searched via PowerShell)
-_HERESPHERE_PATHS = [
-    r"C:\Program Files (x86)\Steam\steamapps\common\HereSphere\HereSphere.exe",
-    r"C:\Program Files\Steam\steamapps\common\HereSphere\HereSphere.exe",
-    r"D:\SteamLibrary\steamapps\common\HereSphere\HereSphere.exe",
-]
+from app.services.vr_helper import (
+    is_video, guess_projection, launch_heresphere_exe,
+)
 
 heresphere_bp = Blueprint('heresphere', __name__)
 logger = logging.getLogger(__name__)
@@ -39,63 +32,6 @@ def log_heresphere_request():
     logger.info(f"[HS-DEBUG] Headers: {dict(request.headers)}")
     if request.data:
         logger.info(f"[HS-DEBUG] Body: {request.data[:500]}")
-
-# Video extensions we consider playable
-_VIDEO_EXTS = {
-    '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm',
-    '.mpeg', '.mpg', '.m4v', '.ts', '.vob', '.mts',
-}
-
-
-def _is_video(filename):
-    """Return True if filename looks like a video."""
-    lower = filename.lower()
-    return any(lower.endswith(ext) for ext in _VIDEO_EXTS)
-
-
-def _guess_projection(filename):
-    """
-    Guess VR projection from filename conventions.
-    Returns (projection, stereo, fov, lens) tuple for HereSphere native API.
-    """
-    upper = filename.upper()
-
-    # Stereo mode
-    if '_TB' in upper or '_OU' in upper:
-        stereo = 'tb'
-    else:
-        stereo = 'sbs'  # SBS is the most common default
-
-    # FOV & Lens
-    fov = 180.0
-    lens = 'Linear'
-
-    # Screen type / projection
-    if '_FISHEYE190' in upper or '_RF52' in upper:
-        projection = 'fisheye'
-        fov = 190.0
-    elif '_MKX200' in upper:
-        projection = 'fisheye'
-        fov = 200.0
-        lens = 'MKX200'
-    elif '_MKX220' in upper:
-        projection = 'fisheye'
-        fov = 220.0
-        lens = 'MKX220'
-    elif '_FISHEYE' in upper:
-        projection = 'fisheye'
-        fov = 180.0
-    elif '_360' in upper:
-        projection = 'equirectangular360'
-        fov = 360.0
-    elif '_FLAT' in upper or '_2D' in upper:
-        projection = 'perspective'
-        stereo = 'mono'
-        fov = 90.0
-    else:
-        projection = 'equirectangular'  # 180° equirect is the most common VR format
-
-    return projection, stereo, fov, lens
 
 
 def _projection_label(projection, stereo, fov):
@@ -161,12 +97,23 @@ def _build_tags(projection, stereo, fov, lens, video_file_count=0, total_bytes=0
 
 
 def _parse_rd_date(date_str):
-    """Parse an RD API date string into a datetime, or return None."""
+    """Parse an RD API date string into a timezone-aware datetime, or return None.
+
+    Handles ISO 8601 formats from Real-Debrid: '2024-01-15T12:30:00.000Z',
+    '2024-01-15T12:30:00+00:00', or naive '2024-01-15T12:30:00' (assumed UTC).
+    """
     if not date_str:
         return None
     try:
-        return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-    except (ValueError, AttributeError):
+        # Normalize trailing 'Z' to a proper UTC offset for fromisoformat()
+        normalized = date_str.replace('Z', '+00:00')
+        dt = datetime.fromisoformat(normalized)
+        # If the result is naive (no timezone), assume UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError, TypeError):
+        logger.warning(f"Could not parse RD date string: {date_str!r}")
         return None
 
 
@@ -188,7 +135,7 @@ def library_index():
     if not api_key:
         if _wants_html():
             return render_template('heresphere.html', error="Real-Debrid API key not configured", videos=[])
-        return jsonify({"error": "Real-Debrid API key not configured"}), 500
+        return jsonify({"status": "error", "error": "Real-Debrid API key not configured"}), 500
 
     try:
         service = RealDebridService(api_key=api_key)
@@ -197,7 +144,7 @@ def library_index():
         logger.error(f"Failed to fetch torrents for HereSphere library: {e}")
         if _wants_html():
             return render_template('heresphere.html', error="Failed to fetch torrent library from Real-Debrid", videos=[])
-        return jsonify({"error": "Failed to fetch torrent library from Real-Debrid"}), 500
+        return jsonify({"status": "error", "error": "Failed to fetch torrent library from Real-Debrid"}), 500
 
     # ── Browser HTML view ──────────────────────────────────────
     if _wants_html():
@@ -206,7 +153,7 @@ def library_index():
             if t.get('status') != 'downloaded':
                 continue
             filename = t.get('filename', 'Unknown')
-            projection, stereo, fov, _lens = _guess_projection(filename)
+            projection, stereo, fov, _lens = guess_projection(filename)
             total_bytes = t.get('bytes', 0) or 0
             videos.append({
                 'id': t.get('id', ''),
@@ -277,7 +224,7 @@ def video_detail(torrent_id):
     """
     api_key = current_app.config.get('REAL_DEBRID_API_KEY')
     if not api_key:
-        return jsonify({"error": "API key not configured"}), 500
+        return jsonify({"status": "error", "error": "API key not configured"}), 500
 
     needs_media = True
     if request.is_json and request.json:
@@ -294,7 +241,7 @@ def video_detail(torrent_id):
         torrent_data = resp.json()
     except requests.exceptions.RequestException as e:
         logger.error(f"HereSphere: failed to fetch torrent {torrent_id}: {e}")
-        return jsonify({"error": "Failed to fetch torrent info"}), 500
+        return jsonify({"status": "error", "error": "Failed to fetch torrent info"}), 500
 
     filename = torrent_data.get('filename', 'Unknown')
     files = torrent_data.get('files') or []
@@ -305,17 +252,17 @@ def video_detail(torrent_id):
     video_files = []
     for f in selected_files:
         fname = f.get('path', '').split('/')[-1]
-        if _is_video(fname):
+        if is_video(fname):
             video_files.append(f)
 
     total_bytes = sum(f.get('bytes', 0) for f in video_files)
 
     # Guess projection from the largest video file name, fall back to torrent name
-    projection, stereo, fov, lens = _guess_projection(filename)
+    projection, stereo, fov, lens = guess_projection(filename)
     if video_files:
         sorted_by_size = sorted(video_files, key=lambda f: f.get('bytes', 0), reverse=True)
         largest_name = sorted_by_size[0].get('path', '').split('/')[-1]
-        projection, stereo, fov, lens = _guess_projection(largest_name)
+        projection, stereo, fov, lens = guess_projection(largest_name)
 
     title = FileHelper.simplify_filename(filename)
     date_added = (torrent_data.get('added') or '')[:10]
@@ -377,7 +324,7 @@ def video_detail(torrent_id):
         })
 
     if not media_entries:
-        return jsonify({"error": "No playable video files found in this torrent"}), 404
+        return jsonify({"status": "error", "error": "No playable video files found in this torrent"}), 404
 
     response = {
         "access": 1,
@@ -408,28 +355,15 @@ def launch_heresphere():
     This restores the original 'Open in HereSphere' button functionality.
     """
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return jsonify({"status": "error", "error": "Content-Type must be application/json"}), 400
 
     video_url = request.json.get("video_url")
     if not video_url:
-        return jsonify({"error": "No video URL provided"}), 400
+        return jsonify({"status": "error", "error": "No video URL provided"}), 400
 
-    try:
-        # Find HereSphere.exe from known install paths
-        exe_path = None
-        for path in _HERESPHERE_PATHS:
-            if os.path.isfile(path):
-                exe_path = path
-                break
-        # Fallback: check if it's on PATH
-        if not exe_path:
-            exe_path = shutil.which("HereSphere") or shutil.which("HereSphere.exe")
-        if not exe_path:
-            logger.error("HereSphere.exe not found in any known location.")
-            return jsonify({"error": "HereSphere.exe not found. Please ensure it is installed via Steam."}), 404
-
-        subprocess.Popen([exe_path, video_url])
+    success, error_msg = launch_heresphere_exe(video_url)
+    if success:
         return jsonify({"status": "success", "message": "HereSphere launched"})
-    except Exception as e:
-        logger.error(f"Failed to launch HereSphere: {e}")
-        return jsonify({"error": "Failed to launch HereSphere"}), 500
+    if "not found" in (error_msg or ""):
+        return jsonify({"status": "error", "error": error_msg}), 404
+    return jsonify({"status": "error", "error": error_msg}), 500

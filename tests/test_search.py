@@ -1,5 +1,6 @@
 import pytest
 import json
+import threading
 from unittest.mock import patch
 
 
@@ -94,3 +95,50 @@ def test_search_no_results(client, mocked_responses):
         response = client.post("/", data={"query": "nonexistent", "limit": "10"})
         assert response.status_code == 200
         assert b"No Results Found" in response.data
+
+
+def test_cancel_search_not_found(client, mocked_responses):
+    """Test that cancelling a non-existent search returns 404."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200
+    )
+
+    response = client.post("/cancel", json={"search_id": "nonexistent_id"})
+    assert response.status_code == 404
+    assert response.json["status"] == "not_found"
+
+
+def test_cancel_search_active(client, mocked_responses):
+    """Test that cancelling an active search sets the cancel event."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200
+    )
+
+    # Manually inject a cancel event into _active_searches
+    from app.routes.search import _active_searches
+    cancel_event = threading.Event()
+    _active_searches["test_search_123"] = cancel_event
+
+    try:
+        response = client.post("/cancel", json={"search_id": "test_search_123"})
+        assert response.status_code == 200
+        assert response.json["status"] == "cancelled"
+        assert cancel_event.is_set()
+    finally:
+        _active_searches.pop("test_search_123", None)
+
+
+def test_cancel_search_no_json(client, mocked_responses):
+    """Test that cancel without JSON body returns 400."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200
+    )
+
+    response = client.post("/cancel", data="not json")
+    assert response.status_code == 400

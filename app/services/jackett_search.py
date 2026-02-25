@@ -260,7 +260,11 @@ class JackettSearchService:
                     if info_dict:
                         encoded_info = bencodepy.encode(info_dict)
                         return hashlib.sha1(encoded_info).hexdigest()
-            except Exception:
+            except bencodepy.DecodingError as e:
+                logger.warning(f"Failed to decode .torrent from {torrent_url}: {e}")
+                return None
+            except Exception as e:
+                logger.debug(f"Attempt {attempt}/{max_retries} to fetch torrent failed: {e}")
                 time.sleep(delay)
 
         return None
