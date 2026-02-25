@@ -13,20 +13,13 @@ Usage:
 
 from flask import Blueprint, jsonify, request, current_app, url_for, render_template
 import logging
-import os
-import shutil
 import requests
-import subprocess
 from datetime import datetime, timedelta, timezone
 from app.services.real_debrid import RealDebridService, RealDebridError
 from app.services.file_helper import FileHelper
-
-# Known install paths for HereSphere (searched via PowerShell)
-_HERESPHERE_PATHS = [
-    r"C:\Program Files (x86)\Steam\steamapps\common\HereSphere\HereSphere.exe",
-    r"C:\Program Files\Steam\steamapps\common\HereSphere\HereSphere.exe",
-    r"D:\SteamLibrary\steamapps\common\HereSphere\HereSphere.exe",
-]
+from app.services.vr_helper import (
+    is_video, guess_projection, launch_heresphere_exe,
+)
 
 heresphere_bp = Blueprint('heresphere', __name__)
 logger = logging.getLogger(__name__)
@@ -39,63 +32,6 @@ def log_heresphere_request():
     logger.info(f"[HS-DEBUG] Headers: {dict(request.headers)}")
     if request.data:
         logger.info(f"[HS-DEBUG] Body: {request.data[:500]}")
-
-# Video extensions we consider playable
-_VIDEO_EXTS = {
-    '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm',
-    '.mpeg', '.mpg', '.m4v', '.ts', '.vob', '.mts',
-}
-
-
-def _is_video(filename):
-    """Return True if filename looks like a video."""
-    lower = filename.lower()
-    return any(lower.endswith(ext) for ext in _VIDEO_EXTS)
-
-
-def _guess_projection(filename):
-    """
-    Guess VR projection from filename conventions.
-    Returns (projection, stereo, fov, lens) tuple for HereSphere native API.
-    """
-    upper = filename.upper()
-
-    # Stereo mode
-    if '_TB' in upper or '_OU' in upper:
-        stereo = 'tb'
-    else:
-        stereo = 'sbs'  # SBS is the most common default
-
-    # FOV & Lens
-    fov = 180.0
-    lens = 'Linear'
-
-    # Screen type / projection
-    if '_FISHEYE190' in upper or '_RF52' in upper:
-        projection = 'fisheye'
-        fov = 190.0
-    elif '_MKX200' in upper:
-        projection = 'fisheye'
-        fov = 200.0
-        lens = 'MKX200'
-    elif '_MKX220' in upper:
-        projection = 'fisheye'
-        fov = 220.0
-        lens = 'MKX220'
-    elif '_FISHEYE' in upper:
-        projection = 'fisheye'
-        fov = 180.0
-    elif '_360' in upper:
-        projection = 'equirectangular360'
-        fov = 360.0
-    elif '_FLAT' in upper or '_2D' in upper:
-        projection = 'perspective'
-        stereo = 'mono'
-        fov = 90.0
-    else:
-        projection = 'equirectangular'  # 180° equirect is the most common VR format
-
-    return projection, stereo, fov, lens
 
 
 def _projection_label(projection, stereo, fov):
@@ -206,7 +142,7 @@ def library_index():
             if t.get('status') != 'downloaded':
                 continue
             filename = t.get('filename', 'Unknown')
-            projection, stereo, fov, _lens = _guess_projection(filename)
+            projection, stereo, fov, _lens = guess_projection(filename)
             total_bytes = t.get('bytes', 0) or 0
             videos.append({
                 'id': t.get('id', ''),
@@ -305,17 +241,17 @@ def video_detail(torrent_id):
     video_files = []
     for f in selected_files:
         fname = f.get('path', '').split('/')[-1]
-        if _is_video(fname):
+        if is_video(fname):
             video_files.append(f)
 
     total_bytes = sum(f.get('bytes', 0) for f in video_files)
 
     # Guess projection from the largest video file name, fall back to torrent name
-    projection, stereo, fov, lens = _guess_projection(filename)
+    projection, stereo, fov, lens = guess_projection(filename)
     if video_files:
         sorted_by_size = sorted(video_files, key=lambda f: f.get('bytes', 0), reverse=True)
         largest_name = sorted_by_size[0].get('path', '').split('/')[-1]
-        projection, stereo, fov, lens = _guess_projection(largest_name)
+        projection, stereo, fov, lens = guess_projection(largest_name)
 
     title = FileHelper.simplify_filename(filename)
     date_added = (torrent_data.get('added') or '')[:10]
@@ -414,22 +350,9 @@ def launch_heresphere():
     if not video_url:
         return jsonify({"error": "No video URL provided"}), 400
 
-    try:
-        # Find HereSphere.exe from known install paths
-        exe_path = None
-        for path in _HERESPHERE_PATHS:
-            if os.path.isfile(path):
-                exe_path = path
-                break
-        # Fallback: check if it's on PATH
-        if not exe_path:
-            exe_path = shutil.which("HereSphere") or shutil.which("HereSphere.exe")
-        if not exe_path:
-            logger.error("HereSphere.exe not found in any known location.")
-            return jsonify({"error": "HereSphere.exe not found. Please ensure it is installed via Steam."}), 404
-
-        subprocess.Popen([exe_path, video_url])
+    success, error_msg = launch_heresphere_exe(video_url)
+    if success:
         return jsonify({"status": "success", "message": "HereSphere launched"})
-    except Exception as e:
-        logger.error(f"Failed to launch HereSphere: {e}")
-        return jsonify({"error": "Failed to launch HereSphere"}), 500
+    if "not found" in (error_msg or ""):
+        return jsonify({"error": error_msg}), 404
+    return jsonify({"error": error_msg}), 500
