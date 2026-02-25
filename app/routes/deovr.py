@@ -49,14 +49,14 @@ def library_index():
 
     api_key = current_app.config.get('REAL_DEBRID_API_KEY')
     if not api_key:
-        return jsonify({"error": "Real-Debrid API key not configured"}), 500
+        return jsonify({"status": "error", "error": "Real-Debrid API key not configured"}), 500
 
     try:
         service = RealDebridService(api_key=api_key)
         torrents = service.get_all_torrents()
     except RealDebridError as e:
         logger.error(f"Failed to fetch torrents for DeoVR library: {e}")
-        return jsonify({"error": "Failed to fetch torrent library from Real-Debrid"}), 500
+        return jsonify({"status": "error", "error": "Failed to fetch torrent library from Real-Debrid"}), 500
 
     # Build the video list in DeoVR shortened format
     video_list = []
@@ -101,7 +101,7 @@ def video_detail(torrent_id):
     """
     api_key = current_app.config.get('REAL_DEBRID_API_KEY')
     if not api_key:
-        return jsonify({"error": "API key not configured"}), 500
+        return jsonify({"status": "error", "error": "API key not configured"}), 500
 
     # Check if the client needs the actual media source
     needs_media = True
@@ -120,7 +120,7 @@ def video_detail(torrent_id):
         torrent_data = resp.json()
     except requests.exceptions.RequestException as e:
         logger.error(f"DeoVR: failed to fetch torrent {torrent_id}: {e}")
-        return jsonify({"error": "Failed to fetch torrent info"}), 500
+        return jsonify({"status": "error", "error": "Failed to fetch torrent info"}), 500
 
     filename = torrent_data.get('filename', 'Unknown')
     screen_type, stereo_mode = guess_projection_deovr(filename)
@@ -170,7 +170,7 @@ def video_detail(torrent_id):
         })
 
     if not video_sources:
-        return jsonify({"error": "No playable video files found in this torrent"}), 404
+        return jsonify({"status": "error", "error": "No playable video files found in this torrent"}), 404
 
     # Use the largest file's name to guess projection if the torrent name
     # doesn't have VR indicators
@@ -202,15 +202,15 @@ def launch_heresphere():
     This restores the original 'Open in HereSphere' button functionality.
     """
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return jsonify({"status": "error", "error": "Content-Type must be application/json"}), 400
 
     video_url = request.json.get("video_url")
     if not video_url:
-        return jsonify({"error": "No video URL provided"}), 400
+        return jsonify({"status": "error", "error": "No video URL provided"}), 400
 
     success, error_msg = launch_heresphere_exe(video_url)
     if success:
         return jsonify({"status": "success", "message": "HereSphere launched"})
     if "not found" in (error_msg or ""):
-        return jsonify({"error": error_msg}), 404
-    return jsonify({"error": error_msg}), 500
+        return jsonify({"status": "error", "error": error_msg}), 404
+    return jsonify({"status": "error", "error": error_msg}), 500

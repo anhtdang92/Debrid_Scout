@@ -97,12 +97,23 @@ def _build_tags(projection, stereo, fov, lens, video_file_count=0, total_bytes=0
 
 
 def _parse_rd_date(date_str):
-    """Parse an RD API date string into a datetime, or return None."""
+    """Parse an RD API date string into a timezone-aware datetime, or return None.
+
+    Handles ISO 8601 formats from Real-Debrid: '2024-01-15T12:30:00.000Z',
+    '2024-01-15T12:30:00+00:00', or naive '2024-01-15T12:30:00' (assumed UTC).
+    """
     if not date_str:
         return None
     try:
-        return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-    except (ValueError, AttributeError):
+        # Normalize trailing 'Z' to a proper UTC offset for fromisoformat()
+        normalized = date_str.replace('Z', '+00:00')
+        dt = datetime.fromisoformat(normalized)
+        # If the result is naive (no timezone), assume UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError, TypeError):
+        logger.warning(f"Could not parse RD date string: {date_str!r}")
         return None
 
 
@@ -124,7 +135,7 @@ def library_index():
     if not api_key:
         if _wants_html():
             return render_template('heresphere.html', error="Real-Debrid API key not configured", videos=[])
-        return jsonify({"error": "Real-Debrid API key not configured"}), 500
+        return jsonify({"status": "error", "error": "Real-Debrid API key not configured"}), 500
 
     try:
         service = RealDebridService(api_key=api_key)
@@ -133,7 +144,7 @@ def library_index():
         logger.error(f"Failed to fetch torrents for HereSphere library: {e}")
         if _wants_html():
             return render_template('heresphere.html', error="Failed to fetch torrent library from Real-Debrid", videos=[])
-        return jsonify({"error": "Failed to fetch torrent library from Real-Debrid"}), 500
+        return jsonify({"status": "error", "error": "Failed to fetch torrent library from Real-Debrid"}), 500
 
     # ── Browser HTML view ──────────────────────────────────────
     if _wants_html():
@@ -213,7 +224,7 @@ def video_detail(torrent_id):
     """
     api_key = current_app.config.get('REAL_DEBRID_API_KEY')
     if not api_key:
-        return jsonify({"error": "API key not configured"}), 500
+        return jsonify({"status": "error", "error": "API key not configured"}), 500
 
     needs_media = True
     if request.is_json and request.json:
@@ -230,7 +241,7 @@ def video_detail(torrent_id):
         torrent_data = resp.json()
     except requests.exceptions.RequestException as e:
         logger.error(f"HereSphere: failed to fetch torrent {torrent_id}: {e}")
-        return jsonify({"error": "Failed to fetch torrent info"}), 500
+        return jsonify({"status": "error", "error": "Failed to fetch torrent info"}), 500
 
     filename = torrent_data.get('filename', 'Unknown')
     files = torrent_data.get('files') or []
@@ -313,7 +324,7 @@ def video_detail(torrent_id):
         })
 
     if not media_entries:
-        return jsonify({"error": "No playable video files found in this torrent"}), 404
+        return jsonify({"status": "error", "error": "No playable video files found in this torrent"}), 404
 
     response = {
         "access": 1,
@@ -344,15 +355,15 @@ def launch_heresphere():
     This restores the original 'Open in HereSphere' button functionality.
     """
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return jsonify({"status": "error", "error": "Content-Type must be application/json"}), 400
 
     video_url = request.json.get("video_url")
     if not video_url:
-        return jsonify({"error": "No video URL provided"}), 400
+        return jsonify({"status": "error", "error": "No video URL provided"}), 400
 
     success, error_msg = launch_heresphere_exe(video_url)
     if success:
         return jsonify({"status": "success", "message": "HereSphere launched"})
     if "not found" in (error_msg or ""):
-        return jsonify({"error": error_msg}), 404
-    return jsonify({"error": error_msg}), 500
+        return jsonify({"status": "error", "error": error_msg}), 404
+    return jsonify({"status": "error", "error": error_msg}), 500

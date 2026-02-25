@@ -136,12 +136,12 @@ This roadmap outlines the planned features, improvements, and critical bug fixes
 
 ### 🐛 Bug-Level Issues
 
-- **#6 — Silent bencodepy decode errors in Jackett search**
-  - [ ] Add specific exception handling for bencode decode failures
+- **#6 — Silent bencodepy decode errors in Jackett search** ✅
+  - [x] Add specific `bencodepy.DecodingError` handling with logging
   - Files: `app/services/jackett_search.py`
 
-- **#7 — Fragile date parsing in HereSphere**
-  - [ ] Improve `_parse_rd_date()` robustness for edge-case date formats
+- **#7 — Fragile date parsing in HereSphere** ✅
+  - [x] Handle naive datetimes (assume UTC), add `TypeError` catch, log unparseable dates
   - Files: `app/routes/heresphere.py`
 
 - **#8 — No input validation in `format_file_size()`** ✅
@@ -150,8 +150,8 @@ This roadmap outlines the planned features, improvements, and critical bug fixes
 
 ### 🧹 Code Quality
 
-- **#13 — Inconsistent JSON error/success response formats**
-  - [ ] Standardize all route responses to `{"status": "...", "message": "..."}`
+- **#13 — Inconsistent JSON error/success response formats** ✅
+  - [x] Add `"status": "error"` to all error responses for consistency with success format
   - Files: `app/routes/torrent.py`, `app/routes/heresphere.py`, `app/routes/deovr.py`
 
 - **#18 — Hardcoded VLC paths (Windows-only)** ✅
@@ -160,12 +160,12 @@ This roadmap outlines the planned features, improvements, and critical bug fixes
 
 ### 🧪 Test Gaps
 
-- **#15 — No test coverage for VR routes**
-  - [ ] Add `tests/test_vr_routes.py` for heresphere and deovr endpoints
-- **#16 — Test fixtures don't set required env vars**
-  - [ ] Fix `tests/conftest.py` so tests don't depend on external `.env`
-- **#17 — No test for `/cancel` endpoint**
-  - [ ] Add cancel search test to `tests/test_search.py`
+- **#15 — No test coverage for VR routes** ✅
+  - [x] Add `tests/test_vr_routes.py` with 16 tests for heresphere, deovr, and projection guessing
+- **#16 — Test fixtures don't set required env vars** ✅
+  - [x] Set env vars via `os.environ.setdefault()` before `create_app()` in `conftest.py`
+- **#17 — No test for `/cancel` endpoint** ✅
+  - [x] Add 3 cancel search tests (not found, active, no JSON) to `tests/test_search.py`
 
 ---
 
