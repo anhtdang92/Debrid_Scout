@@ -10,7 +10,7 @@ with only video files included.
 
 import time
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from flask import current_app
 
@@ -124,7 +124,14 @@ class RDDownloadLinkService:
                             self._try_delete_torrent(torrent_id)
                         continue
 
-                    torrent_info = self.rd_service.get_torrent_info(torrent_id)
+                # Verify the torrent actually reached "downloaded" status.
+                # If the cache was stale, it'll be stuck — clean it up.
+                if status != 'downloaded':
+                    torrent_info, ok = self._wait_for_downloaded(
+                        torrent_id, torrent_name, is_new_torrent
+                    )
+                    if not ok:
+                        continue
 
                 files = torrent_info.get('files') or []
                 links = torrent_info.get('links') or []
@@ -181,6 +188,49 @@ class RDDownloadLinkService:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    # Statuses that indicate the torrent will never complete.
+    _DEAD_STATUSES = frozenset(('error', 'magnet_error', 'virus', 'dead'))
+
+    # Max retries when waiting for a cached torrent to reach "downloaded".
+    _STATUS_RETRIES = 3
+    _STATUS_RETRY_DELAY = 1  # seconds
+
+    def _wait_for_downloaded(
+        self, torrent_id: str, torrent_name: str, is_new_torrent: bool
+    ) -> Tuple[Optional[dict], bool]:
+        """
+        After select_files(), poll torrent status to confirm it reached
+        "downloaded".  Returns (torrent_info, ok).  If the torrent is
+        stuck or dead, it is cleaned up automatically.
+        """
+        for attempt in range(self._STATUS_RETRIES):
+            torrent_info = self.rd_service.get_torrent_info(torrent_id)
+            status = torrent_info.get('status', '')
+
+            if status == 'downloaded':
+                return torrent_info, True
+
+            if status in self._DEAD_STATUSES:
+                logger.warning(
+                    f"Torrent '{torrent_name}' reached dead status '{status}' — cleaning up."
+                )
+                if is_new_torrent:
+                    self._try_delete_torrent(torrent_id)
+                return None, False
+
+            # Still processing — wait briefly before retrying
+            if attempt < self._STATUS_RETRIES - 1:
+                time.sleep(self._STATUS_RETRY_DELAY)
+
+        # Exhausted retries — stale cache, clean up
+        logger.warning(
+            f"Torrent '{torrent_name}' stuck at '{status}' after "
+            f"{self._STATUS_RETRIES} checks — cleaning up."
+        )
+        if is_new_torrent:
+            self._try_delete_torrent(torrent_id)
+        return None, False
 
     def _try_delete_torrent(self, torrent_id: str):
         """Best-effort cleanup of a torrent entry that failed to process."""
@@ -312,7 +362,13 @@ class RDDownloadLinkService:
                             self._try_delete_torrent(torrent_id)
                         continue
 
-                    torrent_info = self.rd_service.get_torrent_info(torrent_id)
+                # Verify the torrent actually reached "downloaded" status.
+                if status != 'downloaded':
+                    torrent_info, ok = self._wait_for_downloaded(
+                        torrent_id, torrent_name, is_new_torrent
+                    )
+                    if not ok:
+                        continue
 
                 files = torrent_info.get('files') or []
                 links = torrent_info.get('links') or []
