@@ -196,8 +196,8 @@ def library_index():
     except RealDebridError as e:
         logger.error(f"Failed to fetch torrents for HereSphere library: {e}")
         if _wants_html():
-            return render_template('heresphere.html', error=str(e), videos=[])
-        return jsonify({"error": str(e)}), 500
+            return render_template('heresphere.html', error="Failed to fetch torrent library from Real-Debrid", videos=[])
+        return jsonify({"error": "Failed to fetch torrent library from Real-Debrid"}), 500
 
     # ── Browser HTML view ──────────────────────────────────────
     if _wants_html():
@@ -432,4 +432,4 @@ def launch_heresphere():
         return jsonify({"status": "success", "message": "HereSphere launched"})
     except Exception as e:
         logger.error(f"Failed to launch HereSphere: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to launch HereSphere"}), 500

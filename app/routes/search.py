@@ -18,7 +18,7 @@ _active_searches = {}
 
 @search_bp.route('/', methods=['GET', 'POST'])
 def index():
-    # account_info is injected automatically via context processor.
+    """Render the search page (GET) or execute a search query (POST)."""
     output = ""
     data = None
     error = None
@@ -58,10 +58,10 @@ def index():
                 logger.info("No results returned from search pipeline.")
 
         except (RDDownloadLinkError, RealDebridError) as e:
-            error = f"Service error: {e}"
+            error = "Search service encountered an error. Please try again."
             logger.error(f"Service error during search: {e}")
         except Exception as e:
-            error = f"An error occurred: {e}"
+            error = "An unexpected error occurred. Please try again."
             logger.exception("Unexpected error during search operation.")
 
     return render_template(
@@ -129,7 +129,7 @@ def stream_search():
                     yield f"data: {json.dumps(event)}\n\n"
             except Exception as e:
                 logger.exception(f"Streaming search error: {e}")
-                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred during search'})}\n\n"
             finally:
                 _active_searches.pop(search_id, None)
 

@@ -52,6 +52,7 @@ class FileHelper:
 
     @staticmethod
     def simplify_filename(file_name):
+        """Replace dots with spaces in a filename, preserving the file extension."""
         parts = file_name.rsplit('.', 1)
         if len(parts) > 1:
             simplified = parts[0].replace('.', ' ')

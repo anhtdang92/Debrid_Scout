@@ -272,7 +272,8 @@ class RDDownloadLinkService:
                 cached_link_service.search_and_check_cache(query, limit)
             )
         except Exception as e:
-            yield {"type": "error", "message": f"Search failed: {e}"}
+            logger.error(f"Streaming search failed: {e}")
+            yield {"type": "error", "message": "Search failed. Please try again."}
             return
 
         total_cached = len(cached_links)

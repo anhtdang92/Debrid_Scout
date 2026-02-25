@@ -112,8 +112,8 @@ def library_index():
         service = RealDebridService(api_key=api_key)
         torrents = service.get_all_torrents()
     except RealDebridError as e:
-        logger.error(f"Failed to fetch torrents for HereSphere library: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Failed to fetch torrents for DeoVR library: {e}")
+        return jsonify({"error": "Failed to fetch torrent library from Real-Debrid"}), 500
 
     # Build the video list in DeoVR shortened format
     video_list = []
@@ -283,4 +283,4 @@ def launch_heresphere():
         return jsonify({"status": "success", "message": "HereSphere launched"})
     except Exception as e:
         logger.error(f"Failed to launch HereSphere: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to launch HereSphere"}), 500

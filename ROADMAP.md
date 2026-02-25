@@ -8,14 +8,14 @@ This roadmap outlines the planned features, improvements, and critical bug fixes
 
 ### 🛠️ Refactoring and Performance Improvements
 
-- **Refactor `Get_RD_Download_Link.py` into an Importable Module** 🔄
+- **Refactor `Get_RD_Download_Link.py` into an Importable Module** ✅
   - **Objective:** Convert the script into a module that can be directly imported and called within the Flask application.
   - **Tasks:**
-    - [ ] Move `Get_RD_Download_Link.py` into the `services` package.
-    - [ ] Refactor the script to expose necessary functions or classes.
-    - [ ] Update `search.py` to import and use the new module.
-    - [ ] Remove subprocess calls and related error handling.
-    - [ ] Test to ensure functionality remains consistent.
+    - [x] Move `Get_RD_Download_Link.py` into the `services` package.
+    - [x] Refactor the script to expose necessary functions or classes.
+    - [x] Update `search.py` to import and use the new module.
+    - [x] Remove subprocess calls and related error handling.
+    - [x] Test to ensure functionality remains consistent.
 
 ### 🐞 High-Priority Bug Fixes and Issues
 
@@ -57,9 +57,9 @@ This roadmap outlines the planned features, improvements, and critical bug fixes
 
 ### 📈 Other Improvements
 
-- **Enhance Error Handling and User Feedback** ⚠️
-  - [ ] Implement consistent error responses across all API endpoints.
-  - [ ] Provide clear and user-friendly error messages in the UI.
+- **Enhance Error Handling and User Feedback** ✅
+  - [x] Implement consistent error responses across all API endpoints.
+  - [x] Provide clear and user-friendly error messages in the UI.
 
 - **Update Documentation and Comments** 📝
   - [ ] Add docstrings to functions and classes.
