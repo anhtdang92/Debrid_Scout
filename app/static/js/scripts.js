@@ -656,8 +656,12 @@ function toggleSelectAll(selectAllCheckbox) {
 // ──────────────────────────────────────────────────────────────
 
 var currentSearchId = null;
+var collectedResults = [];
 
 function startStreamingSearch() {
+  // Clear previous saved results
+  sessionStorage.removeItem("ds_search_results");
+  collectedResults = [];
   var queryInput = document.getElementById("query");
   var limitInput = document.getElementById("limit");
   var query = queryInput ? queryInput.value.trim() : "";
@@ -753,6 +757,7 @@ function handleSearchEvent(data) {
     }
   }
   else if (data.type === "result") {
+    collectedResults.push(data.torrent);
     appendStreamResult(data.torrent);
   }
   else if (data.type === "done") {
@@ -762,6 +767,22 @@ function handleSearchEvent(data) {
 
     document.getElementById("stream-timer").style.display = "flex";
     document.getElementById("stream-elapsed").innerText = data.elapsed;
+
+    // Persist results so they survive page navigation
+    var queryInput = document.getElementById("query");
+    var limitInput = document.getElementById("limit");
+    try {
+      sessionStorage.setItem("ds_search_results", JSON.stringify({
+        results: collectedResults,
+        query: queryInput ? queryInput.value.trim() : "",
+        limit: limitInput ? limitInput.value.trim() : "10",
+        total: data.total,
+        elapsed: data.elapsed
+      }));
+    } catch (e) {
+      console.warn("Could not save search results to sessionStorage:", e);
+    }
+
     finishStreamingSearch();
   }
   else if (data.type === "cancelled") {
@@ -967,6 +988,44 @@ function hsPageLaunch(torrentId, target, btn) {
       btn.disabled = false;
     });
 }
+
+// ──────────────────────────────────────────────────────────────
+// Restore previous search results on page load
+// ──────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", function () {
+  var resultsBody = document.getElementById("stream-results-body");
+  if (!resultsBody) return; // not on search page
+
+  var saved;
+  try {
+    saved = JSON.parse(sessionStorage.getItem("ds_search_results"));
+  } catch (e) {
+    return;
+  }
+  if (!saved || !saved.results || !saved.results.length) return;
+
+  // Restore query and limit inputs
+  var queryInput = document.getElementById("query");
+  var limitInput = document.getElementById("limit");
+  if (queryInput && saved.query) queryInput.value = saved.query;
+  if (limitInput && saved.limit) limitInput.value = saved.limit;
+
+  // Re-render each result
+  saved.results.forEach(function (torrent) {
+    appendStreamResult(torrent);
+  });
+
+  // Show the results table and timer
+  var resultsContainer = document.getElementById("stream-results");
+  if (resultsContainer) resultsContainer.style.display = "block";
+
+  var timerContainer = document.getElementById("stream-timer");
+  if (timerContainer && saved.elapsed) {
+    timerContainer.style.display = "flex";
+    document.getElementById("stream-total").innerText = saved.total || saved.results.length;
+    document.getElementById("stream-elapsed").innerText = saved.elapsed;
+  }
+});
 
 // Client-side search filter for HereSphere library cards
 document.addEventListener("DOMContentLoaded", function () {
