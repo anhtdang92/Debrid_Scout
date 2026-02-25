@@ -5,89 +5,64 @@
 {% block content %}
 <div class="container">
     <h2 id="home">Search</h2>
-    <p class="subtitle">Torrent Search with Real-Debrid Cached Status</p>
+    <p class="subtitle">Search torrents and check Real-Debrid cache availability</p>
 
     <form id="search-form" autocomplete="off" onsubmit="return false;">
         <div class="form-group">
-            <label for="query">Search Query:</label>
-            <div class="input-group search-container">
+            <label for="query">Search Query</label>
+            <div class="search-container">
                 <i class="fa-solid fa-magnifying-glass input-group-addon"></i>
                 <input type="text" id="query" name="query" placeholder="Enter your search term..." required
                     autocomplete="off">
             </div>
         </div>
-        <div class="form-group">
-            <label for="limit">Limit:</label>
+        <div class="form-group" style="flex: 0 1 120px;">
+            <label for="limit">Limit</label>
             <input type="number" id="limit" name="limit" value="10" min="1" required autocomplete="off">
         </div>
-        <div class="form-group full-width">
+        <div class="form-group full-width" style="flex-direction: row; gap: 8px;">
             <button type="button" class="submit-button" id="submit-button" onclick="startStreamingSearch()">
-                <i class="fa-solid fa-paper-plane"></i> Submit
+                <i class="fa-solid fa-magnifying-glass"></i> Search
             </button>
-            <button type="button" class="submit-button" id="cancel-button" onclick="cancelStreamingSearch()"
-                style="display:none; background: #e74c3c; margin-left: 10px;">
+            <button type="button" class="delete-button" id="cancel-button" onclick="cancelStreamingSearch()"
+                style="display:none;">
                 <i class="fa-solid fa-stop"></i> Cancel
             </button>
         </div>
     </form>
+</div>
 
-    <!-- Streaming Progress Section -->
-    <div id="search-progress" style="display:none; margin: 20px 0;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <i class="fa-solid fa-spinner fa-spin" id="progress-spinner"></i>
-            <span id="progress-status">Searching...</span>
-        </div>
-        <div style="width: 100%; background: #333; border-radius: 8px; overflow: hidden; height: 6px;">
-            <div id="progress-bar"
-                style="width: 0%; height: 100%; background: linear-gradient(90deg, #3498db, #2ecc71); transition: width 0.3s;">
-            </div>
-        </div>
-        <div id="progress-detail" style="margin-top: 4px; font-size: 0.85em; color: #888;"></div>
+<!-- Streaming Progress Section -->
+<div id="search-progress" style="display:none; margin: 20px 0;">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+        <i class="fa-solid fa-spinner fa-spin" style="color: var(--accent);" id="progress-spinner"></i>
+        <span id="progress-status" style="font-weight: 500;">Searching...</span>
     </div>
-
-    <!-- Error message area -->
-    <div id="search-error" class="error-message" style="display:none;">
-        <p id="search-error-text"></p>
+    <div class="progress-track">
+        <div id="progress-bar" class="progress-fill" style="width: 0%;"></div>
     </div>
+    <div id="progress-detail" style="margin-top: 6px; font-size: 0.8rem; color: var(--text-muted);"></div>
+</div>
 
-    {% if error %}
-    <div class="error-message">
-        <p>{{ error }}</p>
-    </div>
-    {% endif %}
+<!-- Error message area -->
+<div id="search-error" class="error-message" style="display:none;">
+    <p id="search-error-text"></p>
+</div>
 
-    {% if output %}
-    <div class="output-message">
-        <p>{{ output }}</p>
-    </div>
-    {% endif %}
+{% if error %}
+<div class="error-message">
+    <p>{{ error }}</p>
+</div>
+{% endif %}
 
-    <!-- Streaming Results Table -->
-    <div id="stream-results" style="display:none;">
-        <table>
-            <thead>
-                <tr>
-                    <th>Torrent Name</th>
-                    <th>Categories</th>
-                    <th>Files</th>
-                </tr>
-            </thead>
-            <tbody id="stream-results-body">
-            </tbody>
-        </table>
+{% if output %}
+<div class="output-message">
+    <p>{{ output }}</p>
+</div>
+{% endif %}
 
-        <div class="timer-info" id="stream-timer" style="display:none;">
-            <div class="total-results">
-                <i class="fa-solid fa-list"></i> Total Torrents Found: <span id="stream-total">0</span>
-            </div>
-            <div class="processing-time">
-                <i class="fa-solid fa-clock"></i> Processing Time: <span id="stream-elapsed">0</span> seconds
-            </div>
-        </div>
-    </div>
-
-    <!-- Legacy server-rendered results (from synchronous form POST) -->
-    {% if data %}
+<!-- Streaming Results Table -->
+<div id="stream-results" style="display:none;">
     <table>
         <thead>
             <tr>
@@ -96,122 +71,149 @@
                 <th>Files</th>
             </tr>
         </thead>
-        <tbody>
-            {% for torrent in data %}
-            <tr>
-                <td>{{ simplify_filename(torrent['Torrent Name']) }}</td>
-                <td>
-                    {% for category in torrent.get('Categories', []) %}
-                    <span class="category-tag">{{ category }}</span>
-                    {% endfor %}
-                </td>
-                <td>
-                    {% if torrent['Files']|length == 1 %}
-                    {% set file = torrent['Files'][0] %}
-                    <div>
-                        <div>
-                            <strong>File:</strong> {{ simplify_filename(file['File Name']) }}
-                            <br>
-                            <strong>Size:</strong> {{ file['File Size'] }}
-                        </div>
-                        <div class="file-actions">
-                            <button class="button" data-action="download" data-url="{{ file['Download Link'] }}">
-                                <i class="fa-solid fa-download"></i> Download
-                            </button>
-                            <button class="button" data-action="vlc" data-url="{{ file['Download Link'] }}"
-                                style="margin-left: 10px;">
-                                <i class="fa-solid fa-play"></i> VLC
-                            </button>
-                            <button class="button" data-action="heresphere" data-url="{{ file['Download Link'] }}"
-                                style="margin-left: 10px;">
-                                <i class="fa-solid fa-vr-cardboard"></i> HereSphere
-                            </button>
-                        </div>
-                    </div>
-                    {% else %}
-                    <button class="button" data-action="open-file-modal" data-id="{{ loop.index }}">
-                        Show Files ({{ torrent['Files']|length }})
-                    </button>
+        <tbody id="stream-results-body">
+        </tbody>
+    </table>
 
-                    <div id="modal-{{ loop.index }}" class="rd-modal">
-                        <div class="rd-modal-content">
-                            <span class="rd-close" data-action="close-modal"
-                                data-id="modal-{{ loop.index }}">&times;</span>
-                            <h3>{{ simplify_filename(torrent['Torrent Name']) }}</h3>
-                            <div class="scrollable-content">
-                                {% for file in torrent['Files'] %}
+    <div class="timer-info" id="stream-timer" style="display:none;">
+        <div class="total-results">
+            <i class="fa-solid fa-list"></i> Total Torrents Found: <span id="stream-total">0</span>
+        </div>
+        <div class="processing-time">
+            <i class="fa-solid fa-clock"></i> Processing Time: <span id="stream-elapsed">0</span> seconds
+        </div>
+    </div>
+</div>
+
+<!-- Legacy server-rendered results (from synchronous form POST) -->
+{% if data %}
+<table>
+    <thead>
+        <tr>
+            <th>Torrent Name</th>
+            <th>Categories</th>
+            <th>Files</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for torrent in data %}
+        <tr>
+            <td>{{ simplify_filename(torrent['Torrent Name']) }}</td>
+            <td>
+                {% for category in torrent.get('Categories', []) %}
+                <span class="category-tag">{{ category }}</span>
+                {% endfor %}
+            </td>
+            <td>
+                {% if torrent['Files']|length == 1 %}
+                {% set file = torrent['Files'][0] %}
+                <div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>{{ simplify_filename(file['File Name']) }}</strong>
+                        <br>
+                        <span style="color: var(--text-muted); font-size: 0.85rem;">{{ file['File Size'] }}</span>
+                    </div>
+                    <div class="file-actions">
+                        <button class="button" data-action="download" data-url="{{ file['Download Link'] }}">
+                            <i class="fa-solid fa-download"></i> Download
+                        </button>
+                        <button class="button" data-action="vlc" data-url="{{ file['Download Link'] }}">
+                            <i class="fa-solid fa-play"></i> VLC
+                        </button>
+                        <button class="button" data-action="heresphere" data-url="{{ file['Download Link'] }}">
+                            <i class="fa-solid fa-vr-cardboard"></i> HereSphere
+                        </button>
+                    </div>
+                </div>
+                {% else %}
+                <button class="button" data-action="open-file-modal" data-id="{{ loop.index }}">
+                    <i class="fa-solid fa-folder-open"></i> Show Files ({{ torrent['Files']|length }})
+                </button>
+
+                <div id="modal-{{ loop.index }}" class="rd-modal">
+                    <div class="rd-modal-content">
+                        <span class="rd-close" data-action="close-modal"
+                            data-id="modal-{{ loop.index }}">&times;</span>
+                        <h3>{{ simplify_filename(torrent['Torrent Name']) }}</h3>
+                        <div class="scrollable-content">
+                            {% for file in torrent['Files'] %}
+                            <div style="padding: 12px 0; border-bottom: 1px solid var(--border);">
+                                <div style="margin-bottom: 8px;">
+                                    <strong>{{ simplify_filename(file['File Name']) }}</strong>
+                                    <br>
+                                    <span style="color: var(--text-muted); font-size: 0.85rem;">{{ file['File Size'] }}</span>
+                                </div>
                                 <div class="file-actions">
                                     <button class="button" data-action="download"
                                         data-url="{{ file['Download Link'] }}">
                                         <i class="fa-solid fa-download"></i> Download
                                     </button>
-                                    <button class="button" data-action="vlc" data-url="{{ file['Download Link'] }}"
-                                        style="margin-left: 10px;">
+                                    <button class="button" data-action="vlc" data-url="{{ file['Download Link'] }}">
                                         <i class="fa-solid fa-play"></i> VLC
                                     </button>
                                     <button class="button" data-action="heresphere"
-                                        data-url="{{ file['Download Link'] }}" style="margin-left: 10px;">
+                                        data-url="{{ file['Download Link'] }}">
                                         <i class="fa-solid fa-vr-cardboard"></i> HereSphere
                                     </button>
                                 </div>
-                                {% endfor %}
                             </div>
+                            {% endfor %}
                         </div>
                     </div>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                </div>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
 
-    <div class="timer-info">
-        <div class="total-results">
-            <i class="fa-solid fa-list"></i> Total Torrents Found: {{ data|length }}
-        </div>
+<div class="timer-info">
+    <div class="total-results">
+        <i class="fa-solid fa-list"></i> Total Torrents Found: {{ data|length }}
+    </div>
 
-        {% if overall_time %}
-        <div class="processing-time">
-            <i class="fa-solid fa-clock"></i> Overall Processing Time: {{ "%.2f"|format(overall_time) }} seconds
-        </div>
-        {% endif %}
+    {% if overall_time %}
+    <div class="processing-time">
+        <i class="fa-solid fa-clock"></i> Processing Time: {{ "%.2f"|format(overall_time) }} seconds
+    </div>
+    {% endif %}
 
-        {% if script_times and script_times|length > 0 %}
-        <div class="script-times">
-            <h3>Script Execution Times:</h3>
-            <table class="execution-times-table">
-                <thead>
-                    <tr>
-                        <th>Script Name</th>
-                        <th>Execution Time (seconds)</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for timer in script_times %}
-                    <tr class="{% if timer.time and timer.time > 120 %}long-running{% endif %}">
-                        <td>{{ timer.script }}</td>
-                        <td>
-                            {% if timer.time %}
-                            {{ "%.2f"|format(timer.time) }}
-                            {% else %}
-                            <em>Failed to retrieve time</em>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if timer.time %}
-                            <i class="fa-solid fa-check-circle" title="Executed Successfully"></i>
-                            {% else %}
-                            <i class="fa-solid fa-times-circle" title="Execution Failed"></i>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% endif %}
+    {% if script_times and script_times|length > 0 %}
+    <div class="script-times">
+        <h3>Execution Times</h3>
+        <table class="execution-times-table">
+            <thead>
+                <tr>
+                    <th>Script Name</th>
+                    <th>Time (seconds)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for timer in script_times %}
+                <tr class="{% if timer.time and timer.time > 120 %}long-running{% endif %}">
+                    <td>{{ timer.script }}</td>
+                    <td>
+                        {% if timer.time %}
+                        {{ "%.2f"|format(timer.time) }}
+                        {% else %}
+                        <em>Failed</em>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if timer.time %}
+                        <i class="fa-solid fa-check-circle" style="color: var(--green);" title="Success"></i>
+                        {% else %}
+                        <i class="fa-solid fa-times-circle" style="color: var(--red);" title="Failed"></i>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
     {% endif %}
 </div>
+{% endif %}
 {% endblock %}

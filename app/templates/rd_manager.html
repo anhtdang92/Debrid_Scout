@@ -4,7 +4,7 @@
 
 {% block content %}
 <h2>RD Manager</h2>
-<p class="subtitle">Manage your Real-Debrid torrents below:</p>
+<p class="subtitle">Manage your Real-Debrid torrents</p>
 
 {% if torrents %}
 <!-- Toolbar -->
@@ -17,13 +17,12 @@
 <table class="rd-manager-table">
     <thead>
         <tr>
-            <th>
-                <input type="checkbox" id="select-all" data-action="toggle-select-all" aria-label="Select All Torrents">
-                Select All
+            <th style="width: 60px;">
+                <input type="checkbox" id="select-all" data-action="toggle-select-all" aria-label="Select All">
             </th>
             <th>Torrent Name</th>
-            <th>Status</th>
-            <th>Actions</th>
+            <th style="width: 160px;">Status</th>
+            <th style="width: 200px;">Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -31,18 +30,18 @@
         <tr>
             <td>
                 <input type="checkbox" class="torrent-checkbox" value="{{ torrent.id }}"
-                    aria-label="Select Torrent {{ torrent.filename or 'Unknown Filename' }}">
+                    aria-label="Select {{ torrent.filename or 'Unknown' }}">
             </td>
             <td>{{ torrent.filename or 'Unknown Filename' }}</td>
             <td>
                 {% if torrent.status == "downloaded" %}
-                <i class="fa-solid fa-check downloaded-check" title="Downloaded" aria-label="Downloaded"></i>
+                <i class="fa-solid fa-check-circle downloaded-check" title="Downloaded"></i>
                 {% elif torrent.status in ["error", "magnet_error", "virus", "dead"] %}
                 <span class="status-error">
                     {% if torrent.status == "virus" %}
-                    <i class="fa-solid fa-skull-crossbones"></i> Virus Detected
+                    <i class="fa-solid fa-skull-crossbones"></i> Virus
                     {% elif torrent.status == "dead" %}
-                    <i class="fa-solid fa-skull"></i> Dead (No Seeders)
+                    <i class="fa-solid fa-skull"></i> Dead
                     {% elif torrent.status == "magnet_error" %}
                     <i class="fa-solid fa-link-slash"></i> Magnet Error
                     {% else %}
@@ -51,7 +50,7 @@
                 </span>
                 {% elif torrent.status == "downloading" %}
                 <span class="status-progress">
-                    <i class="fa-solid fa-spinner fa-spin"></i> Downloading ({{ torrent.progress }}%)
+                    <i class="fa-solid fa-spinner fa-spin"></i> {{ torrent.progress }}%
                 </span>
                 {% else %}
                 <span class="status-progress">
@@ -62,12 +61,12 @@
             <td>
                 <div class="button-group">
                     <button class="button" data-action="show-files" data-id="{{ torrent.id }}"
-                        aria-label="Show Files for {{ torrent.filename or 'Unknown Filename' }}">
-                        <i class="fa-solid fa-folder"></i> Files
+                        aria-label="Show Files">
+                        <i class="fa-solid fa-folder-open"></i> Files
                     </button>
                     <button class="delete-button" data-action="confirm-delete" data-id="{{ torrent.id }}"
-                        aria-label="Delete Torrent {{ torrent.filename or 'Unknown Filename' }}" title="Delete Torrent">
-                        <i class="fa-solid fa-trash"></i> Delete
+                        aria-label="Delete" title="Delete Torrent">
+                        <i class="fa-solid fa-trash"></i>
                     </button>
                 </div>
             </td>
@@ -80,7 +79,9 @@
 <div class="pagination">
     {% if current_page > 1 %}
     <a href="{{ url_for('torrent.rd_manager', page=current_page - 1) }}" class="pagination-link"
-        aria-label="Previous Page">Previous</a>
+        aria-label="Previous">
+        <i class="fa-solid fa-chevron-left"></i>
+    </a>
     {% endif %}
 
     {% for page_num in range(1, total_pages + 1) %}
@@ -91,12 +92,18 @@
     {% endif %}
     {% endfor %}
 
-    {% if current_page < total_pages %} <a href="{{ url_for('torrent.rd_manager', page=current_page + 1) }}"
-        class="pagination-link" aria-label="Next Page">Next</a>
-        {% endif %}
+    {% if current_page < total_pages %}
+    <a href="{{ url_for('torrent.rd_manager', page=current_page + 1) }}" class="pagination-link"
+        aria-label="Next">
+        <i class="fa-solid fa-chevron-right"></i>
+    </a>
+    {% endif %}
 </div>
 {% else %}
-<p>No torrents available.</p>
+<div class="hs-empty">
+    <i class="fa-solid fa-inbox"></i>
+    <p>No torrents available.</p>
+</div>
 {% endif %}
 
 <!-- RD Manager Modal -->
@@ -105,7 +112,6 @@
         <span class="rd-close" data-action="close-modal" data-id="rdModal">&times;</span>
         <h3 id="modal-files-title">Files in Torrent</h3>
         <ul id="files-list">
-            <!-- Files will be dynamically loaded here -->
         </ul>
     </div>
 </div>
