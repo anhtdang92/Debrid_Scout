@@ -3,73 +3,41 @@
 {% block title %}About{% endblock %}
 
 {% block content %}
-<!-- Title and Subtitle -->
 <h2>About Debrid Scout</h2>
-<p class="subtitle">Your comprehensive tool for optimized torrent searching and Real-Debrid integration, bringing
-    streaming efficiency to a new level.</p>
+<p class="subtitle">Torrent search and Real-Debrid integration, with VR streaming support.</p>
 
-<!-- Overview Section -->
 <div class="content-section">
     <h3>Overview</h3>
-    <p>Debrid Scout is a cutting-edge torrent management application, meticulously crafted with <strong>Flask</strong>
-        and <strong>Python</strong> to deliver seamless integration with Real-Debrid's caching service. With Debrid
-        Scout, users can search torrents across various indexers and stream content instantly, optimizing both search
-        and streaming experiences.</p>
+    <p>Debrid Scout is a torrent management app built with <strong>Flask</strong> and <strong>Python</strong>.
+        It integrates with Real-Debrid's caching service to let you search torrents across indexers
+        and stream content instantly through direct download links.</p>
 </div>
 
-<!-- Key Features Section -->
 <div class="content-section">
     <h3>Key Features</h3>
     <ul class="features-list">
-        <li><i class="fa-solid fa-search"></i> <strong>Advanced Torrent Search:</strong> Search torrents across multiple
-            sources using specific keywords for precise results.</li>
-        <li><i class="fa-solid fa-link"></i> <strong>Real-Debrid Integration:</strong> Access cached content through
-            Real-Debrid for enhanced download speeds and reliability.</li>
-        <li><i class="fa-solid fa-play-circle"></i> <strong>One-Click Streaming via VLC:</strong> Stream video content
-            directly to VLC Media Player with a single click.</li>
-        <li><i class="fa-solid fa-folder-open"></i> <strong>Robust Torrent Management:</strong> Effortlessly manage,
-            view, and delete torrents using the RD Manager.</li>
-        <li><i class="fa-solid fa-shield-alt"></i> <strong>Comprehensive Error Handling:</strong> Built-in error
-            handling ensures a smooth user experience with meaningful feedback.</li>
-        <li><i class="fa-solid fa-thumbs-up"></i> <strong>User-Centric Design:</strong> A clean and intuitive interface
-            designed to maximize usability and enhance user experience.</li>
+        <li><i class="fa-solid fa-search"></i> <strong>Torrent Search</strong> &mdash; Search across multiple indexers via Jackett with real-time streaming results.</li>
+        <li><i class="fa-solid fa-bolt"></i> <strong>Real-Debrid Integration</strong> &mdash; Instant cache checking and unrestricted download links.</li>
+        <li><i class="fa-solid fa-play"></i> <strong>One-Click Streaming</strong> &mdash; Launch content directly in VLC or HereSphere VR.</li>
+        <li><i class="fa-solid fa-folder-open"></i> <strong>Torrent Manager</strong> &mdash; View, browse files, and manage your RD library.</li>
+        <li><i class="fa-solid fa-vr-cardboard"></i> <strong>VR Support</strong> &mdash; Native HereSphere and DeoVR APIs with projection detection.</li>
     </ul>
 </div>
 
-<!-- How It Works Section -->
 <div class="content-section">
     <h3>How It Works</h3>
-    <p>Debrid Scout leverages a powerful combination of <strong>Python</strong> for backend processing and
-        <strong>JavaScript</strong> for frontend interactivity. By connecting to the Real-Debrid API, Debrid Scout
-        retrieves real-time account and torrent data, providing you with instant access to cached torrents and streaming
-        links.</p>
-    <p>Utilizing the <strong>Jackett</strong> platform for torrent indexing, Debrid Scout retrieves torrent metadata,
-        organizes search results, and ensures smooth integration with Real-Debrid's premium features.</p>
+    <p>Debrid Scout queries <strong>Jackett</strong> for torrent metadata, checks Real-Debrid for cached availability,
+        and generates unrestricted download links for video files. The streaming pipeline uses Server-Sent Events
+        to deliver results in real time as they're processed.</p>
 </div>
 
-<!-- Community Section -->
 <div class="content-section">
-    <h3>Join the Community</h3>
-    <p>Debrid Scout is continuously evolving based on user feedback. Our community-driven approach means that each
-        suggestion you provide has the potential to shape the future of the application. We invite users to connect with
-        us, report issues, and contribute to making Debrid Scout even better.</p>
-    <p>Stay connected through our social media channels or reach out via email. Together, we can make streaming and
-        torrent management easier and more enjoyable for everyone.</p>
+    <h3>Community</h3>
+    <p>Debrid Scout is open source and community-driven. Contributions, bug reports, and feature requests are welcome.</p>
     <div class="social-icons">
-        <a href="https://facebook.com/DebridScout" target="_blank" class="social-icon"><i
-                class="fa-brands fa-facebook"></i> Facebook</a>
-        <a href="https://twitter.com/DebridScout" target="_blank" class="social-icon"><i
-                class="fa-brands fa-twitter"></i> Twitter</a>
-        <a href="https://github.com/anhtdang92/Debrid_Scout" target="_blank" class="social-icon"><i
-                class="fa-brands fa-github"></i> GitHub</a>
+        <a href="https://github.com/anhtdang92/Debrid_Scout" target="_blank" class="social-icon">
+            <i class="fa-brands fa-github"></i> GitHub
+        </a>
     </div>
-</div>
-
-<!-- Conclusion Section -->
-<div class="content-section">
-    <h3>Conclusion</h3>
-    <p>Whether you are a casual streamer or a dedicated torrent enthusiast, Debrid Scout is crafted to provide an
-        all-in-one solution for your streaming needs. We thank you for choosing Debrid Scout and look forward to
-        bringing you continuous updates and enhancements. Happy streaming!</p>
 </div>
 {% endblock %}
