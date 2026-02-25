@@ -2,7 +2,9 @@
 
 """Tests for HereSphere and DeoVR VR route endpoints."""
 
+import os
 import pytest
+import tempfile
 from unittest.mock import patch, MagicMock
 
 
@@ -80,7 +82,7 @@ def test_heresphere_library_html(client, mocked_responses):
 
 
 def test_heresphere_video_detail_metadata(client, mocked_responses):
-    """POST /heresphere/<id> with needsMediaSource=false returns metadata only."""
+    """POST /heresphere/<id> with needsMediaSource=false returns full metadata."""
     mocked_responses.get(
         "https://api.real-debrid.com/rest/1.0/user",
         json=MOCK_USER, status=200,
@@ -100,6 +102,19 @@ def test_heresphere_video_detail_metadata(client, mocked_responses):
     assert data["media"] == []
     assert data["projection"] == "equirectangular"
     assert data["stereo"] == "sbs"
+
+    # ── New enriched fields ──────────────────────────────
+    assert "thumbnailImage" in data
+    assert "/heresphere/thumb/torrent1" in data["thumbnailImage"]
+    assert data["isFavorite"] is False
+    assert data["rating"] == 0
+    assert data["writeFavorite"] is False
+    assert data["writeRating"] is False
+    assert data["writeTags"] is False
+    assert data["writeHSP"] is False
+    assert data["subtitles"] == []
+    assert data["scripts"] == []
+    assert "thumbnailVideo" in data
 
 
 def test_heresphere_video_detail_with_media(client, mocked_responses):
@@ -123,6 +138,9 @@ def test_heresphere_video_detail_with_media(client, mocked_responses):
     data = response.json
     assert len(data["media"]) == 1
     assert "url" in data["media"][0]["sources"][0]
+    # Enriched fields should still be present on full response
+    assert "thumbnailImage" in data
+    assert "isFavorite" in data
 
 
 def test_heresphere_launch(client, mocked_responses):
@@ -156,10 +174,53 @@ def test_heresphere_launch_no_url(client, mocked_responses):
     assert response.status_code == 400
 
 
+# ── Thumbnail endpoint tests ─────────────────────────────────
+
+def test_heresphere_thumb_cached(client, mocked_responses):
+    """GET /heresphere/thumb/<id> serves a cached thumbnail."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    # Create a fake cached thumbnail
+    with patch('app.routes.heresphere._get_thumb_service') as mock_svc:
+        svc = MagicMock()
+        mock_svc.return_value = svc
+
+        # Simulate a cached JPEG file
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
+            f.write(b'\xff\xd8\xff\xe0' + b'\x00' * 100)  # Fake JPEG header
+            tmp_path = f.name
+
+        try:
+            svc.get_cached_path.return_value = tmp_path
+            response = client.get("/heresphere/thumb/torrent1")
+            assert response.status_code == 200
+            assert response.content_type == 'image/jpeg'
+        finally:
+            os.unlink(tmp_path)
+
+
+def test_heresphere_thumb_no_ffmpeg(client, mocked_responses):
+    """GET /heresphere/thumb/<id> returns 404 when ffmpeg is unavailable."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.heresphere._get_thumb_service') as mock_svc:
+        svc = MagicMock()
+        mock_svc.return_value = svc
+        svc.get_cached_path.return_value = None
+        svc.available = False
+
+        response = client.get("/heresphere/thumb/torrent1")
+        assert response.status_code == 404
+
+
 # ── DeoVR tests ───────────────────────────────────────────────
 
 def test_deovr_library(client, mocked_responses):
-    """GET /deovr returns DeoVR JSON library."""
+    """GET /deovr returns DeoVR JSON library with thumbnail URLs."""
     mocked_responses.get(
         "https://api.real-debrid.com/rest/1.0/user",
         json=MOCK_USER, status=200,
@@ -174,10 +235,14 @@ def test_deovr_library(client, mocked_responses):
     assert len(data["scenes"]) == 1
     # Only 'downloaded' torrents should appear
     assert len(data["scenes"][0]["list"]) == 1
+    # Thumbnail URL should be present
+    video = data["scenes"][0]["list"][0]
+    assert "thumbnailUrl" in video
+    assert "/heresphere/thumb/torrent1" in video["thumbnailUrl"]
 
 
 def test_deovr_video_detail_metadata(client, mocked_responses):
-    """POST /deovr/<id> with needsMediaSource=false returns metadata."""
+    """POST /deovr/<id> with needsMediaSource=false returns metadata with thumbnail."""
     mocked_responses.get(
         "https://api.real-debrid.com/rest/1.0/user",
         json=MOCK_USER, status=200,
@@ -196,6 +261,9 @@ def test_deovr_video_detail_metadata(client, mocked_responses):
     assert "stereoMode" in data
     assert data["screenType"] == "dome"
     assert data["stereoMode"] == "sbs"
+    # Thumbnail URL should be present
+    assert "thumbnailUrl" in data
+    assert "/heresphere/thumb/torrent1" in data["thumbnailUrl"]
 
 
 def test_deovr_video_detail_with_media(client, mocked_responses):
@@ -301,3 +369,34 @@ def test_guess_projection_deovr_mapping():
 
     screen, stereo = guess_projection_deovr("Video_FLAT.mp4")
     assert screen == "flat"
+
+
+# ── ThumbnailService unit tests ──────────────────────────────
+
+def test_thumbnail_service_no_ffmpeg():
+    """ThumbnailService.available is False when ffmpeg is missing."""
+    from app.services.thumbnail import ThumbnailService
+    with patch('shutil.which', return_value=None):
+        svc = ThumbnailService(cache_dir=tempfile.mkdtemp())
+    assert svc.available is False
+    assert svc.generate("test", "http://example.com/video.mp4") is None
+
+
+def test_thumbnail_service_cache_hit():
+    """ThumbnailService returns cached path without running ffmpeg."""
+    from app.services.thumbnail import ThumbnailService
+    cache_dir = tempfile.mkdtemp()
+    # Pre-populate cache
+    cached_file = os.path.join(cache_dir, "cached_id.jpg")
+    with open(cached_file, 'wb') as f:
+        f.write(b'\xff\xd8\xff\xe0JFIF')
+
+    svc = ThumbnailService(cache_dir=cache_dir)
+    result = svc.get_cached_path("cached_id")
+    assert result == cached_file
+
+    # generate() should also return from cache without running ffmpeg
+    with patch('shutil.which', return_value="/usr/bin/ffmpeg"):
+        svc2 = ThumbnailService(cache_dir=cache_dir)
+    result = svc2.generate("cached_id", "http://example.com/video.mp4")
+    assert result == cached_file

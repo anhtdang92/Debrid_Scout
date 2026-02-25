@@ -6,12 +6,16 @@ HereSphere / DeoVR-compatible Web API.
 Allows HereSphere's built-in browser to:
   1. Browse the user's Real-Debrid torrent library  (GET  /heresphere)
   2. Get video details with playable download links (POST /heresphere/<id>)
+  3. Serve video thumbnails extracted via ffmpeg      (GET  /heresphere/thumb/<id>)
 
 Usage:
   Open HereSphere → enter http://<your-ip>:5000/heresphere in the browser
 """
 
-from flask import Blueprint, jsonify, request, current_app, url_for, render_template
+from flask import (
+    Blueprint, jsonify, request, current_app, url_for,
+    render_template, send_file,
+)
 import logging
 import requests
 from datetime import datetime, timedelta, timezone
@@ -20,9 +24,21 @@ from app.services.file_helper import FileHelper
 from app.services.vr_helper import (
     is_video, guess_projection, launch_heresphere_exe,
 )
+from app.services.thumbnail import ThumbnailService
 
 heresphere_bp = Blueprint('heresphere', __name__)
 logger = logging.getLogger(__name__)
+
+# Lazily initialised singleton — created on first use
+_thumb_service = None
+
+
+def _get_thumb_service():
+    """Return the shared ThumbnailService instance."""
+    global _thumb_service
+    if _thumb_service is None:
+        _thumb_service = ThumbnailService()
+    return _thumb_service
 
 
 @heresphere_bp.before_request
@@ -269,22 +285,39 @@ def video_detail(torrent_id):
     description = f"{len(video_files)} file{'s' if len(video_files) != 1 else ''} — {FileHelper.format_file_size(total_bytes)}"
     tags = _build_tags(projection, stereo, fov, lens, len(video_files), total_bytes)
 
+    # Thumbnail URL — points to our /heresphere/thumb/<id> endpoint
+    thumb_url = url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True)
+
+    # ── Build base response with ALL HereSphere fields ────────
+    base_response = {
+        "access": 1,
+        "title": title,
+        "description": description,
+        "thumbnailImage": thumb_url,
+        "thumbnailVideo": "",
+        "dateReleased": date_added,
+        "dateAdded": date_added,
+        "duration": 0,
+        "rating": 0,
+        "isFavorite": False,
+        "projection": projection,
+        "stereo": stereo,
+        "fov": fov,
+        "lens": lens,
+        "tags": tags,
+        "subtitles": [],
+        "scripts": [],
+        # Write permissions — read-only for now
+        "writeFavorite": False,
+        "writeRating": False,
+        "writeTags": False,
+        "writeHSP": False,
+    }
+
     # ── Metadata-only response (initial library scan) ─────────
     if not needs_media:
-        resp = jsonify({
-            "access": 1,
-            "title": title,
-            "description": description,
-            "dateReleased": date_added,
-            "dateAdded": date_added,
-            "duration": 0,
-            "projection": projection,
-            "stereo": stereo,
-            "fov": fov,
-            "lens": lens,
-            "tags": tags,
-            "media": [],
-        })
+        base_response["media"] = []
+        resp = jsonify(base_response)
         resp.headers['HereSphere-JSON-Version'] = '1'
         return resp
 
@@ -315,7 +348,7 @@ def video_detail(torrent_id):
         media_entries.append({
             "name": f"File {video_idx}/{len(video_files)} — {size_label}",
             "sources": [{
-                "resolution": "Original",
+                "resolution": 0,
                 "height": 0,
                 "width": 0,
                 "size": f.get('bytes', 0),
@@ -326,25 +359,85 @@ def video_detail(torrent_id):
     if not media_entries:
         return jsonify({"status": "error", "error": "No playable video files found in this torrent"}), 404
 
-    response = {
-        "access": 1,
-        "title": title,
-        "description": description,
-        "dateReleased": date_added,
-        "dateAdded": date_added,
-        "duration": 0,
-        "projection": projection,
-        "stereo": stereo,
-        "fov": fov,
-        "lens": lens,
-        "tags": tags,
-        "media": media_entries,
-    }
+    base_response["media"] = media_entries
 
     logger.info(f"HereSphere detail: serving {len(media_entries)} sources for torrent {torrent_id}")
-    resp = jsonify(response)
+    resp = jsonify(base_response)
     resp.headers['HereSphere-JSON-Version'] = '1'
     return resp
+
+
+# ── GET /heresphere/thumb/<torrent_id> — Thumbnail server ─────
+@heresphere_bp.route('/thumb/<torrent_id>', methods=['GET'])
+def thumbnail(torrent_id):
+    """
+    Serve a video thumbnail for a torrent.
+
+    On first request, unrestricts the first video link and uses ffmpeg to
+    extract a single frame.  The result is cached to disk so subsequent
+    requests are instant.
+    """
+    svc = _get_thumb_service()
+
+    # 1. Check disk cache first (instant)
+    cached = svc.get_cached_path(torrent_id)
+    if cached:
+        return send_file(cached, mimetype='image/jpeg')
+
+    # 2. ffmpeg not available — return 404 gracefully
+    if not svc.available:
+        logger.debug("ffmpeg not available — skipping thumbnail generation")
+        return '', 404
+
+    # 3. Generate thumbnail: fetch torrent info → unrestrict → ffmpeg
+    api_key = current_app.config.get('REAL_DEBRID_API_KEY')
+    if not api_key:
+        return '', 404
+
+    try:
+        headers = {'Authorization': f'Bearer {api_key}'}
+        resp = requests.get(
+            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
+            headers=headers,
+        )
+        resp.raise_for_status()
+        torrent_data = resp.json()
+    except requests.exceptions.RequestException:
+        return '', 404
+
+    files = torrent_data.get('files') or []
+    links = torrent_data.get('links') or []
+    selected = [f for f in files if f.get('selected') == 1]
+
+    # Find the largest video file and its corresponding link
+    video_link = None
+    sorted_files = sorted(selected, key=lambda f: f.get('bytes', 0), reverse=True)
+    for i, f in enumerate(sorted_files):
+        fname = f.get('path', '').split('/')[-1]
+        if is_video(fname) and i < len(links):
+            # The link at the same index in links[] corresponds to this
+            # selected file (RD maintains the order)
+            idx = selected.index(f)
+            if idx < len(links):
+                video_link = links[idx]
+                break
+
+    if not video_link:
+        return '', 404
+
+    # Unrestrict to get a direct URL that ffmpeg can read
+    try:
+        service = RealDebridService(api_key=api_key)
+        direct_url = service.unrestrict_link(video_link)
+    except RealDebridError:
+        return '', 404
+
+    # Run ffmpeg (seeks to 10s, grabs one frame, ~2-5s)
+    path = svc.generate(torrent_id, direct_url)
+    if path:
+        return send_file(path, mimetype='image/jpeg')
+
+    return '', 404
 
 
 # ── POST /heresphere/launch_heresphere — PC app launcher ──────

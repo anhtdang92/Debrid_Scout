@@ -67,10 +67,17 @@ def library_index():
         torrent_id = torrent.get('id', '')
         filename = torrent.get('filename', 'Unknown')
 
+        # Use the HereSphere thumbnail endpoint — works for DeoVR too
+        thumb_url = url_for(
+            'heresphere.thumbnail',
+            torrent_id=torrent_id,
+            _external=True,
+        )
+
         video_list.append({
             "title": filename,
             "videoLength": 0,
-            "thumbnailUrl": "",
+            "thumbnailUrl": thumb_url,
             "video_url": url_for(
                 'deovr.video_detail',
                 torrent_id=torrent_id,
@@ -125,11 +132,15 @@ def video_detail(torrent_id):
     filename = torrent_data.get('filename', 'Unknown')
     screen_type, stereo_mode = guess_projection_deovr(filename)
 
+    # Thumbnail URL — reuses the HereSphere thumbnail endpoint
+    thumb_url = url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True)
+
     # If the client just needs metadata (not playing yet), return minimal info
     if not needs_media:
         return jsonify({
             "title": filename,
             "videoLength": 0,
+            "thumbnailUrl": thumb_url,
             "screenType": screen_type,
             "stereoMode": stereo_mode,
         })
@@ -181,6 +192,7 @@ def video_detail(torrent_id):
     response = {
         "title": filename,
         "videoLength": 0,
+        "thumbnailUrl": thumb_url,
         "screenType": screen_type,
         "stereoMode": stereo_mode,
         "is3d": stereo_mode != 'off',
