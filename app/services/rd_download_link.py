@@ -12,6 +12,7 @@ import time
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 
+import requests
 from flask import current_app
 
 from app.services.rd_cached_link import RDCachedLinkService
@@ -237,7 +238,6 @@ class RDDownloadLinkService:
     def _try_delete_torrent(self, torrent_id: str):
         """Best-effort cleanup of a torrent entry that failed to process."""
         try:
-            import requests
             requests.delete(
                 f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}',
                 headers={'Authorization': f'Bearer {self.api_key}'}
@@ -377,15 +377,25 @@ class RDDownloadLinkService:
                 links = torrent_info.get('links') or []
                 selected_files = [f for f in files if f.get('selected') == 1]
 
+                # Unrestrict links (same as synchronous pipeline)
+                unrestricted_links = []
+                for link in links:
+                    try:
+                        unrestricted = self.rd_service.unrestrict_link(link)
+                        unrestricted_links.append(unrestricted)
+                    except RealDebridError as e:
+                        logger.error(f"Error unrestricting link in stream: {e}")
+                        unrestricted_links.append(link)
+
                 torrent_files = []
-                for file_info, link in zip(selected_files, links):
+                for file_info, unrestricted_link in zip(selected_files, unrestricted_links):
                     file_name = file_info.get('path', '').lstrip('/')
                     file_size = FileHelper.format_file_size(file_info.get('bytes', 0))
                     if FileHelper.is_video_file(file_name):
                         torrent_files.append({
                             'File Name': file_name,
                             'File Size': file_size,
-                            'Download Link': link,
+                            'Download Link': unrestricted_link,
                         })
 
                 if torrent_files:

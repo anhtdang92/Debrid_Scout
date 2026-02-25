@@ -44,11 +44,13 @@ class FileHelper:
     @staticmethod
     def format_file_size(size_in_bytes):
         """Convert bytes to a human-readable string."""
+        if not isinstance(size_in_bytes, (int, float)) or size_in_bytes < 0:
+            return "0.00 B"
         for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
             if size_in_bytes < 1024:
                 return f"{size_in_bytes:.2f} {unit}"
             size_in_bytes /= 1024
-        return f"{size_in_bytes:.2f} PB"  # In case the file size is unusually large
+        return f"{size_in_bytes:.2f} PB"
 
     @staticmethod
     def simplify_filename(file_name):

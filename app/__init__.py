@@ -4,7 +4,6 @@ from logging.handlers import RotatingFileHandler
 import os
 import json
 import time
-from dotenv import load_dotenv
 from flask_caching import Cache
 from app.config import DevelopmentConfig, ProductionConfig
 
@@ -17,9 +16,6 @@ from .routes.torrent import torrent_bp
 from .routes.info import info_bp
 from .routes.heresphere import heresphere_bp
 from .routes.deovr import deovr_bp
-
-# Load environment variables here in case it's not loaded in config.py
-load_dotenv()
 
 # ── Cached account info with TTL ──────────────────────────────
 # Avoids hitting the RD API on every single page load.
@@ -70,8 +66,18 @@ def create_app():
         app.logger.error("REAL_DEBRID_API_KEY is not set. Application cannot run without it.")
         raise RuntimeError("REAL_DEBRID_API_KEY is missing.")
 
-    # Set a secret key for CSRF (use env var or fallback to a random key)
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(32).hex())
+    # Set a secret key for CSRF and sessions.
+    # WARNING: Without a stable SECRET_KEY env var, sessions and CSRF tokens
+    # are invalidated on every app restart.
+    secret_key = os.getenv('SECRET_KEY')
+    if not secret_key:
+        app.logger.warning(
+            "SECRET_KEY is not set — using a random key. "
+            "Sessions will be invalidated on restart. "
+            "Set SECRET_KEY in your .env for production use."
+        )
+        secret_key = os.urandom(32).hex()
+    app.config['SECRET_KEY'] = secret_key
 
     # ── CSRF protection ────────────────────────────────────────
     from flask_wtf.csrf import CSRFProtect

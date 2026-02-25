@@ -98,6 +98,77 @@ This roadmap outlines the planned features, improvements, and critical bug fixes
 
 ---
 
+## 🔧 Version 1.1.3 — Code Quality & Bug Fixes
+
+### 🐞 Critical Fixes
+
+- **#1 — Consolidate duplicated VR code** ✅
+  - [x] Extract shared logic from `heresphere.py` and `deovr.py` into `app/services/vr_helper.py`
+  - [x] Deduplicate `_is_video()`, `_guess_projection()`, `_HERESPHERE_PATHS`, and `launch_heresphere()`
+
+- **#2 — Missing JSON validation in torrent routes** ✅
+  - [x] Add `request.is_json` checks before `request.get_json()` in `unrestrict_link()` and `delete_torrents()`
+  - Files: `app/routes/torrent.py`
+
+- **#3 — Uncaught ValueError in pagination** ✅
+  - [x] Use `request.args.get('page', 1, type=int)` with fallback to prevent crash on `?page=abc`
+  - Files: `app/routes/torrent.py`
+
+- **#4 — Missing top-level `requests` import in rd_download_link.py** ✅
+  - [x] Move `import requests` from inside `_try_delete_torrent()` to module-level imports
+  - Files: `app/services/rd_download_link.py`
+
+- **#5 — Streaming search returns restricted (unusable) links** ✅
+  - [x] Add link unrestriction to `search_and_get_links_stream()` to match synchronous pipeline
+  - Files: `app/services/rd_download_link.py`
+
+### 🔐 Security Fixes
+
+- **#9 — Debug print statements leak info in config.py** ✅
+  - [x] Replace all `print()` calls with proper `logging` or remove them
+  - [x] Use `app.debug` from config instead of hardcoded `debug=True` in `main.py`
+  - Files: `app/config.py`, `app/main.py`
+
+- **#10 — Random SECRET_KEY regenerated on every restart** ✅
+  - [x] Add warning log when SECRET_KEY env var is not set (invalidates sessions/CSRF)
+  - [x] Remove redundant `load_dotenv()` call from `__init__.py`
+  - Files: `app/__init__.py`
+
+### 🐛 Bug-Level Issues
+
+- **#6 — Silent bencodepy decode errors in Jackett search**
+  - [ ] Add specific exception handling for bencode decode failures
+  - Files: `app/services/jackett_search.py`
+
+- **#7 — Fragile date parsing in HereSphere**
+  - [ ] Improve `_parse_rd_date()` robustness for edge-case date formats
+  - Files: `app/routes/heresphere.py`
+
+- **#8 — No input validation in `format_file_size()`** ✅
+  - [x] Guard against negative/invalid size values
+  - Files: `app/services/file_helper.py`
+
+### 🧹 Code Quality
+
+- **#13 — Inconsistent JSON error/success response formats**
+  - [ ] Standardize all route responses to `{"status": "...", "message": "..."}`
+  - Files: `app/routes/torrent.py`, `app/routes/heresphere.py`, `app/routes/deovr.py`
+
+- **#18 — Hardcoded VLC paths (Windows-only)** ✅
+  - [x] Add macOS/Linux paths and prefer `shutil.which()` first
+  - Files: `app/routes/torrent.py`
+
+### 🧪 Test Gaps
+
+- **#15 — No test coverage for VR routes**
+  - [ ] Add `tests/test_vr_routes.py` for heresphere and deovr endpoints
+- **#16 — Test fixtures don't set required env vars**
+  - [ ] Fix `tests/conftest.py` so tests don't depend on external `.env`
+- **#17 — No test for `/cancel` endpoint**
+  - [ ] Add cancel search test to `tests/test_search.py`
+
+---
+
 ## 🚀 Future Versions
 
 ### 🤖 Version 1.4
