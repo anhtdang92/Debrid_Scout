@@ -264,10 +264,16 @@ function openFileModal(index) {
 }
 
 // ──────────────────────────────────────────────────────────────
-// VLC streaming
+// VLC streaming (client-side via vlc:// protocol + .m3u fallback)
 // ──────────────────────────────────────────────────────────────
 /**
- * Launch VLC via server-side subprocess (vlc:// protocol is unreliable on Windows).
+ * Open a video URL in VLC from the browser.
+ *
+ * Strategy:
+ *  1. Try the vlc:// custom protocol (works when VLC is installed and
+ *     registered as a protocol handler — common on Windows/macOS).
+ *  2. If the protocol doesn't trigger within a short timeout, fall back
+ *     to downloading a .m3u playlist file that the user can open in VLC.
  */
 function launchVLC(link) {
   if (!link) {
@@ -275,56 +281,41 @@ function launchVLC(link) {
     return;
   }
 
-  fetch("/torrent/launch_vlc", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRFToken": document.querySelector('input[name="csrf_token"]')
-        ? document.querySelector('input[name="csrf_token"]').value
-        : ""
-    },
-    body: JSON.stringify({ video_url: link }),
-  })
-    .then(function (response) {
-      if (!response.ok) {
-        return response.json().then(function (data) {
-          throw new Error(data.error || "Failed to launch VLC on the server.");
-        });
-      }
-      console.log("VLC launched successfully on the server.");
-    })
-    .catch(function (error) {
-      alert("Error launching VLC: " + error.message);
-    });
+  // Build the vlc:// URI by replacing the scheme (https:// → vlc://)
+  var vlcUri = "vlc://" + link.replace(/^https?:\/\//, "");
+
+  // Try the protocol handler. If VLC is registered, the browser will
+  // prompt or open VLC directly. If not, nothing visible happens.
+  var protocolFrame = document.createElement("iframe");
+  protocolFrame.style.display = "none";
+  protocolFrame.src = vlcUri;
+  document.body.appendChild(protocolFrame);
+
+  // After a short delay, clean up the iframe and offer the .m3u fallback
+  // so the user always has a way to open the file even if vlc:// failed.
+  setTimeout(function () {
+    document.body.removeChild(protocolFrame);
+    downloadM3U(link);
+  }, 1500);
 }
 
 /**
- * Unrestrict a link via the server, then open in VLC.
+ * Generate and trigger download of a .m3u playlist file containing the
+ * video URL. When opened, the OS will launch the default media player
+ * (typically VLC) with the stream.
  */
-function streamInVLC(originalLink) {
-  fetch("/torrent/unrestrict_link", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ link: originalLink }),
-  })
-    .then(function (response) {
-      if (!response.ok) {
-        return response.json().then(function (data) {
-          throw new Error(data.error || "Failed to fetch unrestricted link.");
-        });
-      }
-      return response.json();
-    })
-    .then(function (data) {
-      if (data.unrestricted_link) {
-        launchVLC(data.unrestricted_link);
-      } else {
-        alert("Failed to get unrestricted link for streaming.");
-      }
-    })
-    .catch(function (error) {
-      alert("Error preparing to stream in VLC: " + error.message);
-    });
+function downloadM3U(link) {
+  var content = "#EXTM3U\n" + link + "\n";
+  var blob = new Blob([content], { type: "audio/x-mpegurl" });
+  var url = URL.createObjectURL(blob);
+
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "stream.m3u";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ──────────────────────────────────────────────────────────────

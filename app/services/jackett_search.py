@@ -192,7 +192,10 @@ class JackettSearchService:
                 if "1337x" in link:
                     continue
 
-                # Resolve infohash
+                # Resolve infohash — try three sources in order of cost:
+                # 1. Extract from magnet URI (instant, just a regex)
+                # 2. Read the torznab "infohash" attribute (already in the XML)
+                # 3. Download the .torrent file and compute SHA1 of the info dict (slow, last resort)
                 infohash_elem = item.find('./torznab:attr[@name="infohash"]', TORZNAB_NS)
                 infohash = None
 
@@ -240,6 +243,8 @@ class JackettSearchService:
 
         for attempt in range(1, max_retries + 1):
             try:
+                # Disable auto-redirects: some indexers redirect .torrent URLs to
+                # magnet links, which we can parse directly instead of downloading.
                 response = session.get(torrent_url, allow_redirects=False, timeout=20)
                 if response.status_code == 404:
                     return None
@@ -248,6 +253,8 @@ class JackettSearchService:
                     if redirect_url.startswith('magnet:?'):
                         return self._extract_infohash_from_magnet(redirect_url)
                 elif response.status_code == 200:
+                    # Decode the bencoded .torrent, extract the "info" dict,
+                    # re-encode it, and SHA1-hash it to get the infohash.
                     torrent_data = bencodepy.decode(response.content)
                     info_dict = torrent_data.get(b'info')
                     if info_dict:
