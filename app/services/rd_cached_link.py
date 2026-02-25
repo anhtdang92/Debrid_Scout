@@ -125,6 +125,9 @@ class RDCachedLinkService:
             response.raise_for_status()
             data = response.json()
 
+            # RD returns: { "<hash>": { "rd": [ { "<file_id>": { "filename": ..., "filesize": N } }, ... ] } }
+            # Each "rd" entry is a variant (different file selection).
+            # Sum all file sizes across variants; if total >= expected, it's fully cached.
             if data and infohash in data and "rd" in data[infohash]:
                 total_cached = 0
                 for instance in data[infohash]["rd"]:

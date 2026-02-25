@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @torrent_bp.route('/rd_manager')
 def rd_manager():
-    # account_info is injected automatically via context processor.
+    """Render the RD Manager page with paginated torrent list."""
     REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
     real_debrid_api_error = None
     page = int(request.args.get('page', 1))
@@ -46,6 +46,7 @@ def rd_manager():
 
 @torrent_bp.route('/delete_torrent/<torrent_id>', methods=['DELETE'])
 def delete_torrent(torrent_id):
+    """Delete a single torrent from Real-Debrid by ID."""
     REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
     headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
 
@@ -59,11 +60,12 @@ def delete_torrent(torrent_id):
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Error deleting torrent from Real-Debrid API: {e}")
-        return jsonify({'status': 'error', 'message': 'Failed to delete torrent'}), 500
+        return jsonify({'error': 'Failed to delete torrent'}), 500
 
 
 @torrent_bp.route('/unrestrict_link', methods=['POST'])
 def unrestrict_link():
+    """Unrestrict a Real-Debrid link to obtain a direct download URL."""
     data = request.get_json()
     original_link = data.get('link')
     api_key = current_app.config.get('REAL_DEBRID_API_KEY')
@@ -84,11 +86,12 @@ def unrestrict_link():
         return jsonify({'unrestricted_link': unrestricted_data.get('download', 'Link not found')})
     except requests.exceptions.RequestException as e:
         logger.error(f"Error in unrestrict_link: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to unrestrict link'}), 500
 
 
 @torrent_bp.route('/torrents/<torrent_id>', methods=['GET'])
 def get_torrent_details(torrent_id):
+    """Fetch and return file details for a specific torrent."""
     REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
     headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
 
@@ -138,7 +141,7 @@ def get_torrent_details(torrent_id):
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching torrent info from Real-Debrid API: {e}")
-        return jsonify({'error': 'Failed to retrieve file information'}), 500
+        return jsonify({'error': 'Failed to retrieve torrent information'}), 500
     except Exception as e:
         logger.error(f"Unexpected error processing torrent {torrent_id}: {e}")
         return jsonify({'error': 'Failed to process torrent data'}), 500
@@ -146,13 +149,14 @@ def get_torrent_details(torrent_id):
 
 @torrent_bp.route('/delete_torrents', methods=['POST'])
 def delete_torrents():
+    """Bulk-delete multiple torrents from Real-Debrid."""
     data = request.get_json()
     torrent_ids = data.get('torrentIds', [])
     REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
     headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
 
     if not torrent_ids:
-        return jsonify({'status': 'error', 'message': 'No torrent IDs provided'}), 400
+        return jsonify({'error': 'No torrent IDs provided'}), 400
 
     results = {'deleted': [], 'failed': []}
 
@@ -200,4 +204,4 @@ def launch_vlc():
         return jsonify({"status": "success", "message": "VLC launched"})
     except Exception as e:
         logger.error(f"Failed to launch VLC: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to launch VLC"}), 500

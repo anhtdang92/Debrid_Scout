@@ -63,7 +63,9 @@ class RDDownloadLinkService:
         )
         logger.info(f"Pipeline: {len(cached_links)} cached links from RDCachedLinkService.")
 
-        # 2. Fetch existing torrents to avoid creating duplicates
+        # 2. Build a hash→ID lookup of the user's existing RD torrents so we can
+        #    reuse them instead of adding duplicate magnets (which would clutter
+        #    the user's RD library and waste API calls).
         try:
             existing_torrents = self.rd_service.get_all_torrents()
             existing_hashes = {
@@ -74,7 +76,7 @@ class RDDownloadLinkService:
             logger.warning(f"Failed to fetch existing torrents for duplicate check: {e}")
             existing_hashes = {}
 
-        # 3. Process cached results into download links
+        # 3. Process each cached result: add magnet → select video files → unrestrict links
         final_output = []
         processed_infohashes = set()
 
@@ -272,7 +274,8 @@ class RDDownloadLinkService:
                 cached_link_service.search_and_check_cache(query, limit)
             )
         except Exception as e:
-            yield {"type": "error", "message": f"Search failed: {e}"}
+            logger.error(f"Streaming search failed: {e}")
+            yield {"type": "error", "message": "Search failed. Please try again."}
             return
 
         total_cached = len(cached_links)

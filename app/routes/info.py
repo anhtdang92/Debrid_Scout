@@ -9,11 +9,11 @@ logger = logging.getLogger(__name__)
 
 @info_bp.route('/about')
 def about():
-    # account_info and real_debrid_api_error are injected automatically
-    # via the context processor in __init__.py
+    """Render the About page."""
     return render_template('about.html')
 
 
 @info_bp.route('/contact')
 def contact():
+    """Render the Contact page."""
     return render_template('contact.html')

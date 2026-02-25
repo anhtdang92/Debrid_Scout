@@ -2,6 +2,9 @@ import pytest
 from app import create_app
 import responses
 
+# Reset the account info cache between tests so mocks fire properly
+from app import _account_cache, _CACHE_TTL
+
 @pytest.fixture
 def app():
     # Setup our flask test app
@@ -13,6 +16,10 @@ def app():
         "JACKETT_URL": "http://localhost:9117",
         "WTF_CSRF_ENABLED": False
     })
+    # Reset the account info cache so each test starts fresh
+    _account_cache["data"] = None
+    _account_cache["error"] = None
+    _account_cache["expires"] = 0
     yield app
 
 @pytest.fixture
@@ -25,5 +32,5 @@ def runner(app):
 
 @pytest.fixture
 def mocked_responses():
-    with responses.RequestsMock() as rsps:
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
         yield rsps

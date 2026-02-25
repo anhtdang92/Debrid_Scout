@@ -8,39 +8,39 @@ This roadmap outlines the planned features, improvements, and critical bug fixes
 
 ### 🛠️ Refactoring and Performance Improvements
 
-- **Refactor `Get_RD_Download_Link.py` into an Importable Module** 🔄
+- **Refactor `Get_RD_Download_Link.py` into an Importable Module** ✅
   - **Objective:** Convert the script into a module that can be directly imported and called within the Flask application.
   - **Tasks:**
-    - [ ] Move `Get_RD_Download_Link.py` into the `services` package.
-    - [ ] Refactor the script to expose necessary functions or classes.
-    - [ ] Update `search.py` to import and use the new module.
-    - [ ] Remove subprocess calls and related error handling.
-    - [ ] Test to ensure functionality remains consistent.
+    - [x] Move `Get_RD_Download_Link.py` into the `services` package.
+    - [x] Refactor the script to expose necessary functions or classes.
+    - [x] Update `search.py` to import and use the new module.
+    - [x] Remove subprocess calls and related error handling.
+    - [x] Test to ensure functionality remains consistent.
 
 ### 🐞 High-Priority Bug Fixes and Issues
 
-#### **1. Overwriting the Document with `document.write`** 📝
+#### **1. Overwriting the Document with `document.write`** ✅
 
 - **Issue:** The use of `document.write` in `static/js/scripts.js` overwrites the entire page, which is not the intended behavior and can cause unexpected issues.
 - **Impact:** Affects user experience by disrupting the page's DOM, leading to potential loss of state and event listeners.
 - **Tasks:**
-  - [ ] **Replace `document.write` with DOM Manipulation Methods**
+  - [x] **Replace `document.write` with DOM Manipulation Methods**
     - Modify the JavaScript code to update specific parts of the page using DOM manipulation (e.g., `innerHTML`, `appendChild`).
     - Ensure that the updated code targets the correct DOM elements to display results.
-  - [ ] **Implement Progressive Enhancement**
+  - [x] **Implement Progressive Enhancement**
     - Ensure the application functions correctly even if JavaScript is disabled.
     - Improve user experience by enhancing functionality for browsers that support JavaScript without breaking the core features.
 
-#### **2. Client-Side Streaming Functionality** 🎥
+#### **2. Client-Side Streaming Functionality** ✅
 
 - **Issue:** The current implementation attempts to launch VLC on the server, which is not practical. Browsers have security restrictions that prevent directly launching external applications from client-side JavaScript.
 - **Impact:** Users are unable to stream content directly in VLC from the web application, limiting functionality.
 - **Tasks:**
-  - [ ] **Adjust JavaScript Functions for Client-Side Streaming**
+  - [x] **Adjust JavaScript Functions for Client-Side Streaming**
     - Modify the `launchVLC` function to handle client-side streaming appropriately.
     - Explore using custom URL protocols (e.g., `vlc://`) or generating playlist files (`.m3u8`) that users can open in VLC.
     - Provide clear instructions to users on how to use these features, considering browser security policies.
-  - [ ] **Handle Browser Security Considerations**
+  - [x] **Handle Browser Security Considerations**
     - Research and implement methods that comply with browser security restrictions.
     - Ensure that any new implementation does not introduce security vulnerabilities.
 
@@ -57,13 +57,13 @@ This roadmap outlines the planned features, improvements, and critical bug fixes
 
 ### 📈 Other Improvements
 
-- **Enhance Error Handling and User Feedback** ⚠️
-  - [ ] Implement consistent error responses across all API endpoints.
-  - [ ] Provide clear and user-friendly error messages in the UI.
+- **Enhance Error Handling and User Feedback** ✅
+  - [x] Implement consistent error responses across all API endpoints.
+  - [x] Provide clear and user-friendly error messages in the UI.
 
-- **Update Documentation and Comments** 📝
-  - [ ] Add docstrings to functions and classes.
-  - [ ] Use inline comments to explain complex logic.
+- **Update Documentation and Comments** ✅
+  - [x] Add docstrings to functions and classes.
+  - [x] Use inline comments to explain complex logic.
 
 ---
 
