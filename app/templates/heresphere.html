@@ -55,7 +55,7 @@
 <div class="hs-grid" id="hs-grid">
     {% for v in videos %}
     <div class="hs-card" data-id="{{ v.id }}" data-name="{{ v.name|lower }}" data-date="{{ v.added }}" data-size="{{ v.byte_size }}">
-        <div class="hs-thumb-wrap">
+        <div class="hs-thumb-wrap" data-preview="{{ v.preview_url }}">
             <img class="hs-thumb"
                  src="{{ v.thumb_url }}"
                  alt="{{ v.name }}"

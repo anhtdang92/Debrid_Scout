@@ -256,6 +256,7 @@ def library_index():
                 'added': (t.get('added') or '')[:10],
                 'links_count': len(t.get('links') or []),
                 'thumb_url': url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True),
+                'preview_url': url_for('heresphere.preview', torrent_id=torrent_id, _external=True),
                 'is_favorite': user_data.is_favorite(torrent_id),
                 'rating': user_data.get_rating(torrent_id),
                 'is_watched': user_data.is_watched(torrent_id),

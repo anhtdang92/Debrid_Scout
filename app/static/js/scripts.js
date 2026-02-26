@@ -1104,4 +1104,44 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Apply initial sort on page load
   applySort();
+
+  // ── Hover-to-preview: shared <video> element ──────────────
+  var previewVideo = document.createElement("video");
+  previewVideo.className = "hs-preview-video";
+  previewVideo.muted = true;
+  previewVideo.loop = true;
+  previewVideo.playsInline = true;
+  previewVideo.preload = "none";
+
+  var hoverTimer = null;
+  var activeWrap = null;
+
+  grid.addEventListener("mouseenter", function (e) {
+    var wrap = e.target.closest(".hs-thumb-wrap");
+    if (!wrap) return;
+    var src = wrap.getAttribute("data-preview");
+    if (!src) return;
+
+    // Delay slightly so quick mouse-overs don't trigger loads
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(function () {
+      activeWrap = wrap;
+      previewVideo.src = src;
+      wrap.appendChild(previewVideo);
+      previewVideo.play().catch(function () {});
+    }, 400);
+  }, true);
+
+  grid.addEventListener("mouseleave", function (e) {
+    var wrap = e.target.closest(".hs-thumb-wrap");
+    if (!wrap) return;
+    clearTimeout(hoverTimer);
+    if (activeWrap === wrap) {
+      previewVideo.pause();
+      previewVideo.removeAttribute("src");
+      previewVideo.load(); // reset
+      if (previewVideo.parentElement) previewVideo.parentElement.removeChild(previewVideo);
+      activeWrap = null;
+    }
+  }, true);
 });

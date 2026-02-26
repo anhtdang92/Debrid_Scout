@@ -1061,6 +1061,16 @@ input[type="checkbox"]:checked::after {
     display: none;
 }
 
+/* Hover preview video — overlays the thumbnail */
+.hs-preview-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 3;
+}
+
 /* Projection badge overlaid on the thumbnail */
 .hs-badge {
     display: inline-block;
