@@ -158,3 +158,107 @@ def test_get_torrent_details_route(client, mocked_responses):
         assert response.status_code == 200
         assert response.json['filename'] == "Test.Movie.2024.mkv"
         assert response.json['files'][0]['link'] == "https://download.real-debrid.com/d/abc123/Test.Movie.2024.mkv"
+
+
+# ── HereSphere scan endpoint tests ───────────────────────────
+
+def test_heresphere_library_includes_scan_url(client, mocked_responses):
+    """The library index JSON should include a 'scan' URL."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock_torrents:
+        mock_torrents.return_value = []
+        response = client.post("/heresphere/")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "scan" in data
+        assert "/heresphere/scan" in data["scan"]
+
+
+def test_heresphere_scan_returns_bulk_metadata(client, mocked_responses):
+    """POST /heresphere/scan returns metadata for all downloaded torrents."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    torrents = [
+        {
+            "id": "abc123",
+            "filename": "Great.VR.Video_180_SBS.mp4",
+            "status": "downloaded",
+            "bytes": 5000000000,
+            "added": "2025-12-01T10:00:00.000Z",
+            "links": ["https://rd.link/1"],
+        },
+        {
+            "id": "def456",
+            "filename": "Another.Movie.mkv",
+            "status": "downloaded",
+            "bytes": 2000000000,
+            "added": "2025-11-15T08:00:00.000Z",
+            "links": ["https://rd.link/2", "https://rd.link/3"],
+        },
+        {
+            "id": "ghi789",
+            "filename": "Still.Downloading.mkv",
+            "status": "downloading",
+            "bytes": 1000000000,
+            "added": "2025-12-20T12:00:00.000Z",
+            "links": [],
+        },
+    ]
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock_torrents:
+        mock_torrents.return_value = torrents
+        response = client.post("/heresphere/scan")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert "scanData" in body
+        data = body["scanData"]
+        # Only 2 downloaded torrents should be in the response
+        assert len(data) == 2
+        # Each entry has required HereSphere scan fields
+        for entry in data:
+            assert "link" in entry
+            assert "title" in entry
+            assert "tags" in entry
+            assert "dateAdded" in entry
+            assert "duration" in entry
+            assert "isFavorite" in entry
+        # Check specific entries
+        assert data[0]["title"] == "Great VR Video_180_SBS.mp4"
+        assert "/heresphere/abc123" in data[0]["link"]
+        # Tags should include VR projection info
+        tag_names = [t["name"] for t in data[0]["tags"]]
+        assert any("180" in name for name in tag_names)
+
+
+def test_heresphere_scan_empty_library(client, mocked_responses):
+    """POST /heresphere/scan returns empty array when no torrents exist."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock_torrents:
+        mock_torrents.return_value = []
+        response = client.post("/heresphere/scan")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body == {"scanData": []}
+
+
+def test_heresphere_scan_has_correct_header(client, mocked_responses):
+    """POST /heresphere/scan response includes HereSphere-JSON-Version header."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock_torrents:
+        mock_torrents.return_value = []
+        response = client.post("/heresphere/scan")
+        assert response.headers.get('HereSphere-JSON-Version') == '1'

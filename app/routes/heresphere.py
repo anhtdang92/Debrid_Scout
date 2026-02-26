@@ -159,6 +159,53 @@ def _parse_rd_date(date_str):
         return None
 
 
+def _build_scan_entry(torrent, user_data):
+    """
+    Build a lightweight HereSphere scan entry from torrent list data.
+
+    Returns the minimal fields HereSphere needs to populate its search,
+    sort, and filter UI (title, dates, tags, rating, link) — without
+    playback data (media, projection, thumbnails, etc.).
+
+    The torrent dict comes from RealDebridService.get_all_torrents()
+    (id, filename, status, bytes, added, links).
+    """
+    torrent_id = torrent.get('id', '')
+    filename = torrent.get('filename', 'Unknown')
+    total_bytes = torrent.get('bytes', 0) or 0
+    date_added = (torrent.get('added') or '')[:10]
+    links_count = len(torrent.get('links') or [])
+
+    projection, stereo, fov, lens = guess_projection(filename)
+    title = FileHelper.simplify_filename(filename)
+    tags = _build_tags(
+        projection, stereo, fov, lens,
+        links_count, total_bytes, date_added,
+    )
+    if user_data.is_watched(torrent_id):
+        tags.append({"name": "Feature:Watched"})
+    else:
+        tags.append({"name": "Feature:Unwatched"})
+
+    detail_url = url_for(
+        'heresphere.video_detail', torrent_id=torrent_id, _external=True,
+    )
+
+    entry = {
+        "link": detail_url,
+        "title": title,
+        "dateReleased": date_added,
+        "dateAdded": date_added,
+        "duration": 0,
+        "isFavorite": user_data.is_favorite(torrent_id),
+        "tags": tags,
+    }
+    rating = user_data.get_rating(torrent_id)
+    if rating:
+        entry["rating"] = rating
+    return entry
+
+
 # ── GET/POST /heresphere — Library listing ─────────────────────
 @heresphere_bp.route('', methods=['GET', 'POST'])
 @heresphere_bp.route('/', methods=['GET', 'POST'])
@@ -215,7 +262,8 @@ def library_index():
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
 
-    recent, this_month, older = [], [], []
+    user_data = _get_user_data()
+    favorites, recent, this_month, older = [], [], [], []
 
     for torrent in torrents:
         if torrent.get('status') != 'downloaded':
@@ -228,6 +276,9 @@ def library_index():
             _external=True
         )
 
+        if user_data.is_favorite(torrent_id):
+            favorites.append(detail_url)
+
         added = _parse_rd_date(torrent.get('added'))
         if added and added >= week_ago:
             recent.append(detail_url)
@@ -237,6 +288,8 @@ def library_index():
             older.append(detail_url)
 
     library = []
+    if favorites:
+        library.append({"name": "Favorites", "list": favorites})
     if recent:
         library.append({"name": "Recently Added", "list": recent})
     if this_month:
@@ -247,10 +300,46 @@ def library_index():
         library.append({"name": "Real-Debrid Library", "list": []})
 
     total = len(recent) + len(this_month) + len(older)
-    response = {"access": 1, "library": library}
+    scan_url = url_for('heresphere.scan', _external=True)
+    response = {"access": 1, "library": library, "scan": scan_url}
 
     logger.info(f"HereSphere library: returning {total} videos in {len(library)} sections")
     resp = jsonify(response)
+    resp.headers['HereSphere-JSON-Version'] = '1'
+    return resp
+
+
+# ── POST /heresphere/scan — Bulk metadata for library scan ────
+@heresphere_bp.route('/scan', methods=['POST'])
+def scan():
+    """
+    Return metadata for every video in one response.
+
+    HereSphere uses this to populate tags, titles, dates, etc. for the
+    entire library without making individual requests per video.  The
+    response is an array of the same objects that video_detail returns
+    when needsMediaSource is false (i.e. metadata only, media=[]).
+    """
+    api_key = current_app.config.get('REAL_DEBRID_API_KEY')
+    if not api_key:
+        return jsonify([]), 500
+
+    try:
+        service = RealDebridService(api_key=api_key)
+        torrents = service.get_all_torrents()
+    except RealDebridError as e:
+        logger.error(f"HereSphere scan: failed to fetch torrents: {e}")
+        return jsonify([]), 500
+
+    user_data = _get_user_data()
+    scan_data = []
+    for torrent in torrents:
+        if torrent.get('status') != 'downloaded':
+            continue
+        scan_data.append(_build_scan_entry(torrent, user_data))
+
+    logger.info(f"HereSphere scan: returning metadata for {len(scan_data)} videos")
+    resp = jsonify({"scanData": scan_data})
     resp.headers['HereSphere-JSON-Version'] = '1'
     return resp
 
@@ -318,11 +407,22 @@ def video_detail(torrent_id):
     tags = _build_tags(projection, stereo, fov, lens,
                        len(video_files), total_bytes, date_added)
 
-    # Thumbnail URL — points to our /heresphere/thumb/<id> endpoint
+    # Thumbnail / preview / event URLs
     thumb_url = url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True)
+    preview_url = url_for('heresphere.preview', torrent_id=torrent_id, _external=True)
+    event_url = url_for('heresphere.event', torrent_id=torrent_id, _external=True)
 
-    # Load persisted user data (favorites, ratings)
+    # Load persisted user data (favorites, ratings, playback)
     user_data = _get_user_data()
+
+    # Add Watched/Unwatched tag
+    if user_data.is_watched(torrent_id):
+        tags.append({"name": "Feature:Watched"})
+    else:
+        tags.append({"name": "Feature:Unwatched"})
+
+    # Resume position — HereSphere uses currentTime (milliseconds)
+    playback_seconds = user_data.get_playback_time(torrent_id)
 
     # ── Build base response with ALL HereSphere fields ────────
     base_response = {
@@ -330,16 +430,18 @@ def video_detail(torrent_id):
         "title": title,
         "description": description,
         "thumbnailImage": thumb_url,
-        "thumbnailVideo": "",
+        "thumbnailVideo": preview_url,
         "dateReleased": date_added,
         "dateAdded": date_added,
         "duration": 0,
+        "currentTime": playback_seconds * 1000.0,
         "rating": user_data.get_rating(torrent_id),
         "isFavorite": user_data.is_favorite(torrent_id),
         "projection": projection,
         "stereo": stereo,
         "fov": fov,
         "lens": lens,
+        "eventServer": event_url,
         "tags": tags,
         "subtitles": [],
         "scripts": [],
@@ -403,6 +505,52 @@ def video_detail(torrent_id):
     return resp
 
 
+def _get_direct_video_url(torrent_id):
+    """Fetch torrent info, find the largest video file, and unrestrict its link.
+
+    Returns the direct URL string, or None on any failure.
+    Shared by the thumbnail and preview endpoints.
+    """
+    api_key = current_app.config.get('REAL_DEBRID_API_KEY')
+    if not api_key:
+        return None
+
+    try:
+        headers = {'Authorization': f'Bearer {api_key}'}
+        resp = requests.get(
+            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
+            headers=headers,
+        )
+        resp.raise_for_status()
+        torrent_data = resp.json()
+    except requests.exceptions.RequestException:
+        return None
+
+    files = torrent_data.get('files') or []
+    links = torrent_data.get('links') or []
+    selected = [f for f in files if f.get('selected') == 1]
+
+    # Find the largest video file and its corresponding link
+    video_link = None
+    sorted_files = sorted(selected, key=lambda f: f.get('bytes', 0), reverse=True)
+    for i, f in enumerate(sorted_files):
+        fname = f.get('path', '').split('/')[-1]
+        if is_video(fname) and i < len(links):
+            idx = selected.index(f)
+            if idx < len(links):
+                video_link = links[idx]
+                break
+
+    if not video_link:
+        return None
+
+    try:
+        service = RealDebridService(api_key=api_key)
+        return service.unrestrict_link(video_link)
+    except RealDebridError:
+        return None
+
+
 # ── GET /heresphere/thumb/<torrent_id> — Thumbnail server ─────
 @heresphere_bp.route('/thumb/<torrent_id>', methods=['GET'])
 def thumbnail(torrent_id):
@@ -415,65 +563,73 @@ def thumbnail(torrent_id):
     """
     svc = _get_thumb_service()
 
-    # 1. Check disk cache first (instant)
     cached = svc.get_cached_path(torrent_id)
     if cached:
         return send_file(cached, mimetype='image/jpeg')
 
-    # 2. ffmpeg not available — return 404 gracefully
     if not svc.available:
         logger.debug("ffmpeg not available — skipping thumbnail generation")
         return '', 404
 
-    # 3. Generate thumbnail: fetch torrent info → unrestrict → ffmpeg
-    api_key = current_app.config.get('REAL_DEBRID_API_KEY')
-    if not api_key:
+    direct_url = _get_direct_video_url(torrent_id)
+    if not direct_url:
         return '', 404
 
-    try:
-        headers = {'Authorization': f'Bearer {api_key}'}
-        resp = requests.get(
-            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
-            headers=headers,
-        )
-        resp.raise_for_status()
-        torrent_data = resp.json()
-    except requests.exceptions.RequestException:
-        return '', 404
-
-    files = torrent_data.get('files') or []
-    links = torrent_data.get('links') or []
-    selected = [f for f in files if f.get('selected') == 1]
-
-    # Find the largest video file and its corresponding link
-    video_link = None
-    sorted_files = sorted(selected, key=lambda f: f.get('bytes', 0), reverse=True)
-    for i, f in enumerate(sorted_files):
-        fname = f.get('path', '').split('/')[-1]
-        if is_video(fname) and i < len(links):
-            # The link at the same index in links[] corresponds to this
-            # selected file (RD maintains the order)
-            idx = selected.index(f)
-            if idx < len(links):
-                video_link = links[idx]
-                break
-
-    if not video_link:
-        return '', 404
-
-    # Unrestrict to get a direct URL that ffmpeg can read
-    try:
-        service = RealDebridService(api_key=api_key)
-        direct_url = service.unrestrict_link(video_link)
-    except RealDebridError:
-        return '', 404
-
-    # Run ffmpeg (seeks to 10s, grabs one frame, ~2-5s)
     path = svc.generate(torrent_id, direct_url)
     if path:
         return send_file(path, mimetype='image/jpeg')
 
     return '', 404
+
+
+# ── GET /heresphere/preview/<torrent_id> — Animated preview ───
+@heresphere_bp.route('/preview/<torrent_id>', methods=['GET'])
+def preview(torrent_id):
+    """
+    Serve a short (~5 s) muted MP4 preview clip for a torrent.
+
+    HereSphere displays this as an animated thumbnail on hover in the
+    library grid.  Generated via ffmpeg and cached to disk.
+    """
+    svc = _get_thumb_service()
+
+    cached = svc.get_cached_preview_path(torrent_id)
+    if cached:
+        return send_file(cached, mimetype='video/mp4')
+
+    if not svc.available:
+        logger.debug("ffmpeg not available — skipping preview generation")
+        return '', 404
+
+    direct_url = _get_direct_video_url(torrent_id)
+    if not direct_url:
+        return '', 404
+
+    path = svc.generate_preview(torrent_id, direct_url)
+    if path:
+        return send_file(path, mimetype='video/mp4')
+
+    return '', 404
+
+
+# ── POST /heresphere/event/<torrent_id> — Playback event server ─
+@heresphere_bp.route('/event/<torrent_id>', methods=['POST'])
+def event(torrent_id):
+    """
+    Receive playback events from HereSphere.
+
+    HereSphere sends JSON with playerState (0=play, 1=pause, 2=close),
+    currentTime (seconds), and playbackSpeed.  We persist the position
+    for resume and increment the play count on close.
+    """
+    if not request.is_json:
+        return '', 204
+
+    body = request.json or {}
+    logger.debug(f"HereSphere event for {torrent_id}: {body}")
+
+    _get_user_data().process_heresphere_event(torrent_id, body)
+    return '', 204
 
 
 # ── POST /heresphere/launch_heresphere — PC app launcher ──────

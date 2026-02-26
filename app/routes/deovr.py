@@ -6,6 +6,8 @@ DeoVR-compatible Web API.
 Allows DeoVR's built-in browser to:
   1. Browse the user's Real-Debrid torrent library  (GET  /deovr)
   2. Get video details with playable download links (POST /deovr/<id>)
+  3. Write back favorites and ratings               (POST /deovr/<id>)
+  4. Receive playback events for tracking            (POST /deovr/event/<id>)
 
 Usage:
   Open DeoVR → enter http://<your-ip>:5000/deovr in the browser
@@ -115,6 +117,9 @@ def video_detail(torrent_id):
     """
     Return video detail JSON for a specific torrent in DeoVR format.
 
+    Write-back: when the client POSTs isFavorite or rating in the
+    request body, we persist them locally before returning the response.
+
     When the client sends needsMediaSource=true, we unrestrict the
     download links and return them as playable video sources.
     """
@@ -122,10 +127,13 @@ def video_detail(torrent_id):
     if not api_key:
         return jsonify({"status": "error", "error": "API key not configured"}), 500
 
-    # Check if the client needs the actual media source
+    # ── Process write-back ────────────────────────────────────
     needs_media = True
+    body = {}
     if request.is_json and request.json:
-        needs_media = request.json.get('needsMediaSource', True)
+        body = request.json
+        needs_media = body.get('needsMediaSource', True)
+        _get_user_data().process_heresphere_update(torrent_id, body)
 
     headers = {'Authorization': f'Bearer {api_key}'}
 
@@ -147,6 +155,9 @@ def video_detail(torrent_id):
     # Thumbnail URL — reuses the HereSphere thumbnail endpoint
     thumb_url = url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True)
 
+    # Load persisted user data
+    user_data = _get_user_data()
+
     # If the client just needs metadata (not playing yet), return minimal info
     if not needs_media:
         return jsonify({
@@ -155,6 +166,7 @@ def video_detail(torrent_id):
             "thumbnailUrl": thumb_url,
             "screenType": screen_type,
             "stereoMode": stereo_mode,
+            "isFavorite": user_data.is_favorite(torrent_id),
         })
 
     # ── Build video sources from the torrent's files ──────────
@@ -201,6 +213,12 @@ def video_detail(torrent_id):
         largest_name = sorted_files[0].get('path', '').split('/')[-1]
         screen_type, stereo_mode = guess_projection_deovr(largest_name)
 
+    # Resume position (DeoVR uses seconds)
+    playback_seconds = user_data.get_playback_time(torrent_id)
+
+    # Event server URL for playback tracking
+    event_url = url_for('deovr.event', torrent_id=torrent_id, _external=True)
+
     response = {
         "title": FileHelper.simplify_filename(filename),
         "videoLength": 0,
@@ -208,7 +226,10 @@ def video_detail(torrent_id):
         "screenType": screen_type,
         "stereoMode": stereo_mode,
         "is3d": stereo_mode != 'off',
-        "isFavorite": _get_user_data().is_favorite(torrent_id),
+        "isFavorite": user_data.is_favorite(torrent_id),
+        "rating": user_data.get_rating(torrent_id),
+        "currentTime": playback_seconds,
+        "eventServer": event_url,
         "encodings": [{
             "name": "original",
             "videoSources": video_sources,
@@ -217,6 +238,36 @@ def video_detail(torrent_id):
 
     logger.info(f"DeoVR: serving {len(video_sources)} sources for torrent {torrent_id}")
     return jsonify(response)
+
+
+# ── POST /deovr/event/<torrent_id> — Playback event server ────
+@deovr_bp.route('/event/<torrent_id>', methods=['POST'])
+def event(torrent_id):
+    """
+    Receive playback events from DeoVR.
+
+    DeoVR sends JSON with playerState (0=play, 1=pause, 2=close)
+    and currentTime (seconds).  We persist the position for resume
+    and increment the play count on close (playerState 2).
+    """
+    if not request.is_json:
+        return '', 204
+
+    body = request.json or {}
+    logger.debug(f"DeoVR event for {torrent_id}: {body}")
+
+    # DeoVR uses playerState: 0=play, 1=pause, 2=close
+    current_time = body.get('currentTime', body.get('time'))
+    player_state = body.get('playerState', body.get('event'))
+
+    if current_time is not None:
+        _get_user_data().update_playback_time(torrent_id, current_time)
+
+    # playerState 2 = close (DeoVR)
+    if player_state == 2:
+        _get_user_data().increment_play_count(torrent_id)
+
+    return '', 204
 
 
 # ── POST /deovr/launch_heresphere — PC app launcher ──────

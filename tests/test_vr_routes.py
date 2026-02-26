@@ -68,6 +68,46 @@ def test_heresphere_library_json(client, mocked_responses):
     assert total_urls == 1
 
 
+def test_heresphere_library_favorites_section(client, mocked_responses):
+    """Favorited torrents appear in a 'Favorites' section at the top."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock, \
+         patch('app.routes.heresphere._get_user_data') as mock_ud:
+        mock.return_value = MOCK_TORRENTS
+        # Simulate torrent1 being favorited
+        store = MagicMock()
+        store.is_favorite.side_effect = lambda tid: tid == "torrent1"
+        mock_ud.return_value = store
+        response = client.post("/heresphere")
+
+    data = response.json
+    assert data["library"][0]["name"] == "Favorites"
+    assert len(data["library"][0]["list"]) == 1
+    assert "torrent1" in data["library"][0]["list"][0]
+
+
+def test_heresphere_library_no_favorites_section_when_empty(client, mocked_responses):
+    """No 'Favorites' section when nothing is favorited."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock, \
+         patch('app.routes.heresphere._get_user_data') as mock_ud:
+        mock.return_value = MOCK_TORRENTS
+        store = MagicMock()
+        store.is_favorite.return_value = False
+        mock_ud.return_value = store
+        response = client.post("/heresphere")
+
+    data = response.json
+    section_names = [s["name"] for s in data["library"]]
+    assert "Favorites" not in section_names
+
+
 def test_heresphere_library_html(client, mocked_responses):
     """GET /heresphere with Accept: text/html returns the browser view."""
     mocked_responses.get(
@@ -172,6 +212,7 @@ def test_heresphere_write_favorite(client, mocked_responses):
         mock_store.return_value = store
         store.is_favorite.return_value = True
         store.get_rating.return_value = 0.0
+        store.get_playback_time.return_value = 0.0
 
         response = client.post(
             "/heresphere/torrent1",
@@ -202,6 +243,7 @@ def test_heresphere_write_rating(client, mocked_responses):
         mock_store.return_value = store
         store.is_favorite.return_value = False
         store.get_rating.return_value = 4.5
+        store.get_playback_time.return_value = 0.0
 
         response = client.post(
             "/heresphere/torrent1",
@@ -285,6 +327,93 @@ def test_heresphere_thumb_no_ffmpeg(client, mocked_responses):
 
         response = client.get("/heresphere/thumb/torrent1")
         assert response.status_code == 404
+
+
+# ── Preview clip endpoint tests ───────────────────────────────
+
+def test_heresphere_preview_cached(client, mocked_responses):
+    """GET /heresphere/preview/<id> serves a cached preview clip."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.heresphere._get_thumb_service') as mock_svc:
+        svc = MagicMock()
+        mock_svc.return_value = svc
+
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
+            f.write(b'\x00\x00\x00\x1cftypisom' + b'\x00' * 100)  # Fake MP4
+            tmp_path = f.name
+
+        try:
+            svc.get_cached_preview_path.return_value = tmp_path
+            response = client.get("/heresphere/preview/torrent1")
+            assert response.status_code == 200
+            assert response.content_type == 'video/mp4'
+        finally:
+            os.unlink(tmp_path)
+
+
+def test_heresphere_preview_no_ffmpeg(client, mocked_responses):
+    """GET /heresphere/preview/<id> returns 404 when ffmpeg is unavailable."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.heresphere._get_thumb_service') as mock_svc:
+        svc = MagicMock()
+        mock_svc.return_value = svc
+        svc.get_cached_preview_path.return_value = None
+        svc.available = False
+
+        response = client.get("/heresphere/preview/torrent1")
+        assert response.status_code == 404
+
+
+def test_heresphere_video_detail_includes_preview_url(client, mocked_responses):
+    """Video detail response includes thumbnailVideo pointing to preview endpoint."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    response = client.post(
+        "/heresphere/torrent1",
+        json={"needsMediaSource": False},
+        content_type="application/json",
+    )
+    data = response.json
+    assert "thumbnailVideo" in data
+    assert "/heresphere/preview/torrent1" in data["thumbnailVideo"]
+
+
+# ── Preview service unit tests ────────────────────────────────
+
+def test_preview_service_no_ffmpeg():
+    """generate_preview returns None when ffmpeg is missing."""
+    from app.services.thumbnail import ThumbnailService
+    with patch('shutil.which', return_value=None):
+        svc = ThumbnailService(cache_dir=tempfile.mkdtemp(),
+                               preview_dir=tempfile.mkdtemp())
+    assert svc.generate_preview("test", "http://example.com/v.mp4") is None
+
+
+def test_preview_service_cache_hit():
+    """generate_preview returns cached path without running ffmpeg."""
+    from app.services.thumbnail import ThumbnailService
+    preview_dir = tempfile.mkdtemp()
+    cached_file = os.path.join(preview_dir, "cached_id.mp4")
+    with open(cached_file, 'wb') as f:
+        f.write(b'\x00' * 100)
+
+    with patch('shutil.which', return_value="/usr/bin/ffmpeg"):
+        svc = ThumbnailService(cache_dir=tempfile.mkdtemp(),
+                               preview_dir=preview_dir)
+    assert svc.get_cached_preview_path("cached_id") == cached_file
+    assert svc.generate_preview("cached_id", "http://example.com/v.mp4") == cached_file
 
 
 # ── DeoVR tests ───────────────────────────────────────────────
@@ -544,3 +673,349 @@ def test_user_data_store_ignores_unrelated_fields():
 
     # Nothing should have been stored
     assert store.get("t1") == {}
+
+
+# ── Playback event tests ─────────────────────────────────────
+
+def test_user_data_store_playback_tracking():
+    """UserDataStore tracks playback time, play count, and watched status."""
+    from app.services.user_data import UserDataStore
+    data_dir = tempfile.mkdtemp()
+    store = UserDataStore(data_dir=data_dir)
+
+    # Defaults
+    assert store.get_playback_time("t1") == 0.0
+    assert store.get_play_count("t1") == 0
+    assert store.is_watched("t1") is False
+
+    # Update playback time
+    store.update_playback_time("t1", 123.5)
+    assert store.get_playback_time("t1") == 123.5
+
+    # Increment play count
+    store.increment_play_count("t1")
+    assert store.get_play_count("t1") == 1
+    assert store.is_watched("t1") is True
+
+    store.increment_play_count("t1")
+    assert store.get_play_count("t1") == 2
+
+    # Verify persistence
+    store2 = UserDataStore(data_dir=data_dir)
+    assert store2.get_playback_time("t1") == 123.5
+    assert store2.get_play_count("t1") == 2
+    assert store2.is_watched("t1") is True
+
+
+def test_user_data_store_process_event():
+    """process_heresphere_event updates position and counts closes."""
+    from app.services.user_data import UserDataStore
+    data_dir = tempfile.mkdtemp()
+    store = UserDataStore(data_dir=data_dir)
+
+    # Open event (event=0) with position
+    store.process_heresphere_event("t1", {
+        "event": 0, "time": 0.0, "speed": 1.0,
+    })
+    assert store.get_playback_time("t1") == 0.0
+    assert store.get_play_count("t1") == 0
+
+    # Play event (event=1) with position
+    store.process_heresphere_event("t1", {
+        "event": 1, "time": 30.0, "speed": 1.0,
+    })
+    assert store.get_playback_time("t1") == 30.0
+    assert store.get_play_count("t1") == 0
+
+    # Pause event (event=2)
+    store.process_heresphere_event("t1", {
+        "event": 2, "time": 60.0,
+    })
+    assert store.get_playback_time("t1") == 60.0
+    assert store.get_play_count("t1") == 0  # Not closed yet
+
+    # Close event (event=3)
+    store.process_heresphere_event("t1", {
+        "event": 3, "time": 90.0,
+    })
+    assert store.get_playback_time("t1") == 90.0
+    assert store.get_play_count("t1") == 1
+    assert store.is_watched("t1") is True
+
+
+def test_heresphere_event_endpoint(client, mocked_responses):
+    """POST /heresphere/event/<id> accepts events and returns 204."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.heresphere._get_user_data') as mock_ud:
+        store = MagicMock()
+        mock_ud.return_value = store
+        response = client.post(
+            "/heresphere/event/torrent1",
+            json={"event": 1, "time": 42.0, "speed": 1.0},
+            content_type="application/json",
+        )
+    assert response.status_code == 204
+    store.process_heresphere_event.assert_called_once_with(
+        "torrent1", {"event": 1, "time": 42.0, "speed": 1.0},
+    )
+
+
+def test_heresphere_video_detail_has_event_server(client, mocked_responses):
+    """Video detail includes eventServer URL."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    response = client.post(
+        "/heresphere/torrent1",
+        json={"needsMediaSource": False},
+        content_type="application/json",
+    )
+    data = response.json
+    assert "eventServer" in data
+    assert "/heresphere/event/torrent1" in data["eventServer"]
+
+
+def test_heresphere_video_detail_unwatched_tag(client, mocked_responses):
+    """Video detail includes Feature:Unwatched tag by default."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    response = client.post(
+        "/heresphere/torrent1",
+        json={"needsMediaSource": False},
+        content_type="application/json",
+    )
+    data = response.json
+    tag_names = [t["name"] for t in data["tags"]]
+    assert "Feature:Unwatched" in tag_names
+
+
+def test_heresphere_video_detail_resume_position(client, mocked_responses):
+    """Video detail includes currentTime for resume playback."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    with patch('app.routes.heresphere._get_user_data') as mock_ud:
+        store = MagicMock()
+        mock_ud.return_value = store
+        store.is_favorite.return_value = False
+        store.get_rating.return_value = 0.0
+        store.is_watched.return_value = True
+        store.get_playback_time.return_value = 120.5
+        response = client.post(
+            "/heresphere/torrent1",
+            json={"needsMediaSource": False},
+            content_type="application/json",
+        )
+    data = response.json
+    # HereSphere uses milliseconds
+    assert "currentTime" in data
+    assert data["currentTime"] == 120500.0
+
+
+def test_heresphere_video_detail_zero_resume_when_no_playback(client, mocked_responses):
+    """currentTime is 0 when nothing has been played yet."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    response = client.post(
+        "/heresphere/torrent1",
+        json={"needsMediaSource": False},
+        content_type="application/json",
+    )
+    data = response.json
+    assert data["currentTime"] == 0.0
+
+
+# ── DeoVR event endpoint tests ───────────────────────────────
+
+def test_deovr_event_endpoint(client, mocked_responses):
+    """POST /deovr/event/<id> accepts events and returns 204."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.deovr._get_user_data') as mock_ud:
+        store = MagicMock()
+        mock_ud.return_value = store
+        response = client.post(
+            "/deovr/event/torrent1",
+            json={"playerState": 1, "currentTime": 42.0},
+            content_type="application/json",
+        )
+    assert response.status_code == 204
+    store.update_playback_time.assert_called_once_with("torrent1", 42.0)
+
+
+def test_deovr_event_close_increments_play_count(client, mocked_responses):
+    """DeoVR playerState=2 (close) increments the play count."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.deovr._get_user_data') as mock_ud:
+        store = MagicMock()
+        mock_ud.return_value = store
+        response = client.post(
+            "/deovr/event/torrent1",
+            json={"playerState": 2, "currentTime": 300.0},
+            content_type="application/json",
+        )
+    assert response.status_code == 204
+    store.update_playback_time.assert_called_once_with("torrent1", 300.0)
+    store.increment_play_count.assert_called_once_with("torrent1")
+
+
+def test_deovr_event_non_json(client, mocked_responses):
+    """POST /deovr/event/<id> without JSON returns 204 gracefully."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    response = client.post("/deovr/event/torrent1", data="not json")
+    assert response.status_code == 204
+
+
+# ── DeoVR video detail enriched fields tests ─────────────────
+
+def test_deovr_video_detail_has_event_server(client, mocked_responses):
+    """DeoVR video detail includes eventServer URL."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.unrestrict_link') as mock_unrestrict:
+        mock_unrestrict.return_value = "https://unrestricted.real-debrid.com/video.mp4"
+        response = client.post(
+            "/deovr/torrent1",
+            json={"needsMediaSource": True},
+        )
+    data = response.json
+    assert "eventServer" in data
+    assert "/deovr/event/torrent1" in data["eventServer"]
+
+
+def test_deovr_video_detail_resume_position(client, mocked_responses):
+    """DeoVR video detail includes currentTime for resume."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    with patch('app.routes.deovr._get_user_data') as mock_ud, \
+         patch('app.services.real_debrid.RealDebridService.unrestrict_link') as mock_unrestrict:
+        store = MagicMock()
+        mock_ud.return_value = store
+        store.is_favorite.return_value = False
+        store.get_rating.return_value = 0.0
+        store.get_playback_time.return_value = 75.3
+        mock_unrestrict.return_value = "https://unrestricted.real-debrid.com/video.mp4"
+        response = client.post(
+            "/deovr/torrent1",
+            json={"needsMediaSource": True},
+        )
+    data = response.json
+    # DeoVR uses seconds
+    assert "currentTime" in data
+    assert data["currentTime"] == 75.3
+
+
+def test_deovr_video_detail_rating(client, mocked_responses):
+    """DeoVR video detail includes persisted rating."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    with patch('app.routes.deovr._get_user_data') as mock_ud, \
+         patch('app.services.real_debrid.RealDebridService.unrestrict_link') as mock_unrestrict:
+        store = MagicMock()
+        mock_ud.return_value = store
+        store.is_favorite.return_value = False
+        store.get_rating.return_value = 4.0
+        store.get_playback_time.return_value = 0.0
+        mock_unrestrict.return_value = "https://unrestricted.real-debrid.com/video.mp4"
+        response = client.post(
+            "/deovr/torrent1",
+            json={"needsMediaSource": True},
+        )
+    data = response.json
+    assert data["rating"] == 4.0
+
+
+def test_deovr_write_favorite(client, mocked_responses):
+    """POST /deovr/<id> with isFavorite persists it via write-back."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    with patch('app.routes.deovr._get_user_data') as mock_ud:
+        store = MagicMock()
+        mock_ud.return_value = store
+        store.is_favorite.return_value = True
+        store.get_rating.return_value = 0.0
+        store.get_playback_time.return_value = 0.0
+        response = client.post(
+            "/deovr/torrent1",
+            json={"needsMediaSource": False, "isFavorite": True},
+        )
+    assert response.status_code == 200
+    store.process_heresphere_update.assert_called_once_with(
+        "torrent1", {"needsMediaSource": False, "isFavorite": True},
+    )
+
+
+def test_deovr_metadata_includes_favorite(client, mocked_responses):
+    """DeoVR metadata-only response includes isFavorite."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    response = client.post(
+        "/deovr/torrent1",
+        json={"needsMediaSource": False},
+    )
+    data = response.json
+    assert "isFavorite" in data
+    assert data["isFavorite"] is False
