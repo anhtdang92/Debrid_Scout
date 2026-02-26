@@ -242,16 +242,18 @@ def library_index():
             if t.get('status') != 'downloaded':
                 continue
             filename = t.get('filename', 'Unknown')
+            torrent_id = t.get('id', '')
             projection, stereo, fov, _lens = guess_projection(filename)
             total_bytes = t.get('bytes', 0) or 0
             videos.append({
-                'id': t.get('id', ''),
+                'id': torrent_id,
                 'name': FileHelper.simplify_filename(filename),
                 'raw_name': filename,
                 'projection_label': _projection_label(projection, stereo, fov),
                 'size': FileHelper.format_file_size(total_bytes),
                 'added': (t.get('added') or '')[:10],
                 'links_count': len(t.get('links') or []),
+                'thumb_url': url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True),
             })
 
         hs_url = url_for('heresphere.library_index', _external=True)

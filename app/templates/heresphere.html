@@ -44,14 +44,24 @@
 <div class="hs-grid" id="hs-grid">
     {% for v in videos %}
     <div class="hs-card" data-id="{{ v.id }}">
-        <div class="hs-card-header">
-            <span class="hs-badge">{{ v.projection_label }}</span>
-            {% if v.added %}
-            <span class="hs-date">{{ v.added }}</span>
-            {% endif %}
+        <div class="hs-thumb-wrap">
+            <img class="hs-thumb"
+                 src="{{ v.thumb_url }}"
+                 alt="{{ v.name }}"
+                 loading="lazy"
+                 onerror="this.parentElement.classList.add('hs-thumb-error')">
+            <div class="hs-thumb-placeholder">
+                <i class="fa-solid fa-film"></i>
+            </div>
+            <span class="hs-badge hs-badge-overlay">{{ v.projection_label }}</span>
         </div>
         <div class="hs-card-body">
-            <h4 class="hs-card-title" title="{{ v.raw_name }}">{{ v.name }}</h4>
+            <div class="hs-card-title-row">
+                <h4 class="hs-card-title" title="{{ v.raw_name }}">{{ v.name }}</h4>
+                {% if v.added %}
+                <span class="hs-date">{{ v.added }}</span>
+                {% endif %}
+            </div>
             <div class="hs-card-meta">
                 <span><i class="fa-solid fa-hard-drive"></i> {{ v.size }}</span>
                 {% if v.links_count %}
