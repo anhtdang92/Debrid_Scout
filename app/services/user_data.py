@@ -12,6 +12,7 @@ endpoint to enable resume position and watched status.
 Thread-safe via a threading lock (HereSphere can fire rapid POSTs).
 """
 
+import fcntl
 import json
 import os
 import threading
@@ -142,20 +143,30 @@ class UserDataStore:
     # ── Persistence ───────────────────────────────────────────
 
     def _load(self) -> dict:
-        """Load from disk, returning empty dict on any error."""
+        """Load from disk with shared file lock, returning empty dict on error."""
         if not os.path.isfile(self._path):
             return {}
         try:
             with open(self._path, 'r') as f:
-                return json.load(f)
+                fcntl.flock(f, fcntl.LOCK_SH)
+                data = json.load(f)
+                fcntl.flock(f, fcntl.LOCK_UN)
+                return data
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Could not load user data: {e}")
             return {}
 
     def _save(self):
-        """Write cache to disk. Caller must hold self._lock."""
+        """Write cache to disk with file locking for cross-process safety.
+
+        Caller must hold self._lock (thread lock). The file lock (flock)
+        serialises writes across gunicorn workers.
+        """
         try:
             with open(self._path, 'w') as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
                 json.dump(self._cache, f, indent=2)
+                f.flush()
+                fcntl.flock(f, fcntl.LOCK_UN)
         except OSError as e:
             logger.error(f"Could not save user data: {e}")

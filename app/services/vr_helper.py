@@ -20,6 +20,8 @@ VIDEO_EXTS = {
     '.mpeg', '.mpg', '.m4v', '.ts', '.vob', '.mts',
 }
 
+SUBTITLE_EXTS = {'.srt', '.ass', '.ssa', '.vtt', '.sub'}
+
 # Known install paths for HereSphere
 HERESPHERE_PATHS = [
     r"C:\Program Files (x86)\Steam\steamapps\common\HereSphere\HereSphere.exe",
@@ -32,6 +34,12 @@ def is_video(filename):
     """Return True if filename looks like a video."""
     lower = filename.lower()
     return any(lower.endswith(ext) for ext in VIDEO_EXTS)
+
+
+def is_subtitle(filename):
+    """Return True if filename looks like a subtitle file."""
+    lower = filename.lower()
+    return any(lower.endswith(ext) for ext in SUBTITLE_EXTS)
 
 
 def guess_projection(filename):

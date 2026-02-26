@@ -1024,33 +1024,179 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 
-// Client-side search filter for HereSphere library cards
+// Client-side search filter + sort for HereSphere library cards
 document.addEventListener("DOMContentLoaded", function () {
   var searchInput = document.getElementById("hs-search");
-  if (!searchInput) return;
+  var sortSelect = document.getElementById("hs-sort");
+  var grid = document.getElementById("hs-grid");
+  if (!grid) return;
 
-  searchInput.addEventListener("input", function () {
-    var term = this.value.toLowerCase().trim();
-    var grid = document.getElementById("hs-grid");
-    var noMatch = document.getElementById("hs-no-match");
-    var countEl = document.getElementById("hs-count");
-    if (!grid) return;
+  var HS_SORT_KEY = "hs-sort-preference";
 
-    var cards = grid.querySelectorAll(".hs-card");
-    var visible = 0;
+  // Restore saved sort preference
+  if (sortSelect) {
+    var saved = localStorage.getItem(HS_SORT_KEY);
+    if (saved) sortSelect.value = saved;
+  }
 
-    cards.forEach(function (card) {
+  // ── Pagination state ──────────────────────────────────────
+  var HS_PAGE_SIZE = 24;
+  var currentPage = 1;
+  var countEl = document.getElementById("hs-count");
+  var noMatch = document.getElementById("hs-no-match");
+  var paginationEl = document.getElementById("hs-pagination");
+
+  function getFilteredCards() {
+    var term = searchInput ? searchInput.value.toLowerCase().trim() : "";
+    var all = Array.prototype.slice.call(grid.querySelectorAll(".hs-card"));
+    if (!term) return all;
+    return all.filter(function (card) {
       var title = (card.querySelector(".hs-card-title") || {}).textContent || "";
-      var match = title.toLowerCase().indexOf(term) !== -1;
-      card.style.display = match ? "" : "none";
-      if (match) visible++;
+      return title.toLowerCase().indexOf(term) !== -1;
+    });
+  }
+
+  function applyPagination() {
+    var filtered = getFilteredCards();
+    var totalPages = Math.max(1, Math.ceil(filtered.length / HS_PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    var start = (currentPage - 1) * HS_PAGE_SIZE;
+    var end = start + HS_PAGE_SIZE;
+
+    // Build a set of IDs for the current page
+    var pageSet = {};
+    for (var i = start; i < end && i < filtered.length; i++) {
+      pageSet[filtered[i].getAttribute("data-id")] = true;
+    }
+
+    // Show only cards on the current page
+    grid.querySelectorAll(".hs-card").forEach(function (card) {
+      card.style.display = pageSet[card.getAttribute("data-id")] ? "" : "none";
     });
 
     if (countEl) {
-      countEl.textContent = visible + " video" + (visible !== 1 ? "s" : "");
+      countEl.textContent = filtered.length + " video" + (filtered.length !== 1 ? "s" : "");
     }
     if (noMatch) {
-      noMatch.style.display = (visible === 0 && term) ? "block" : "none";
+      var term = searchInput ? searchInput.value.trim() : "";
+      noMatch.style.display = (filtered.length === 0 && term) ? "block" : "none";
     }
-  });
+
+    renderPagination(totalPages);
+  }
+
+  function renderPagination(totalPages) {
+    if (!paginationEl) return;
+    paginationEl.innerHTML = "";
+    if (totalPages <= 1) return;
+
+    function btn(label, page, active, disabled) {
+      var b = document.createElement("button");
+      b.className = "hs-page-btn" + (active ? " active" : "");
+      b.textContent = label;
+      b.disabled = disabled;
+      if (!disabled && !active) {
+        b.addEventListener("click", function () {
+          currentPage = page;
+          applyPagination();
+          grid.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+      return b;
+    }
+
+    paginationEl.appendChild(btn("\u00AB", 1, false, currentPage === 1));
+    paginationEl.appendChild(btn("\u2039", currentPage - 1, false, currentPage === 1));
+
+    var lo = Math.max(1, currentPage - 3);
+    var hi = Math.min(totalPages, lo + 6);
+    lo = Math.max(1, hi - 6);
+    for (var p = lo; p <= hi; p++) {
+      paginationEl.appendChild(btn(String(p), p, p === currentPage, false));
+    }
+
+    paginationEl.appendChild(btn("\u203A", currentPage + 1, false, currentPage === totalPages));
+    paginationEl.appendChild(btn("\u00BB", totalPages, false, currentPage === totalPages));
+  }
+
+  function applyFilter() {
+    currentPage = 1;
+    applyPagination();
+  }
+
+  function applySort() {
+    var value = sortSelect ? sortSelect.value : "date-desc";
+    var parts = value.split("-");
+    var field = parts[0]; // "date", "name", or "size"
+    var dir = parts[1];   // "asc" or "desc"
+
+    var cards = Array.prototype.slice.call(grid.querySelectorAll(".hs-card"));
+    cards.sort(function (a, b) {
+      var aVal, bVal;
+      if (field === "name") {
+        aVal = a.getAttribute("data-name") || "";
+        bVal = b.getAttribute("data-name") || "";
+        return dir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      } else if (field === "size") {
+        aVal = parseFloat(a.getAttribute("data-size")) || 0;
+        bVal = parseFloat(b.getAttribute("data-size")) || 0;
+        return dir === "asc" ? aVal - bVal : bVal - aVal;
+      } else {
+        aVal = a.getAttribute("data-date") || "";
+        bVal = b.getAttribute("data-date") || "";
+        return dir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+    });
+
+    cards.forEach(function (card) { grid.appendChild(card); });
+    if (sortSelect) localStorage.setItem(HS_SORT_KEY, value);
+    applyPagination();
+  }
+
+  // Bind events
+  if (searchInput) searchInput.addEventListener("input", applyFilter);
+  if (sortSelect) sortSelect.addEventListener("change", applySort);
+
+  // Apply initial sort (triggers pagination)
+  applySort();
+
+  // ── Hover-to-preview: shared <video> element ──────────────
+  var previewVideo = document.createElement("video");
+  previewVideo.className = "hs-preview-video";
+  previewVideo.muted = true;
+  previewVideo.loop = true;
+  previewVideo.playsInline = true;
+  previewVideo.preload = "none";
+
+  var hoverTimer = null;
+  var activeWrap = null;
+
+  grid.addEventListener("mouseenter", function (e) {
+    var wrap = e.target.closest(".hs-thumb-wrap");
+    if (!wrap) return;
+    var src = wrap.getAttribute("data-preview");
+    if (!src) return;
+
+    // Delay slightly so quick mouse-overs don't trigger loads
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(function () {
+      activeWrap = wrap;
+      previewVideo.src = src;
+      wrap.appendChild(previewVideo);
+      previewVideo.play().catch(function () {});
+    }, 400);
+  }, true);
+
+  grid.addEventListener("mouseleave", function (e) {
+    var wrap = e.target.closest(".hs-thumb-wrap");
+    if (!wrap) return;
+    clearTimeout(hoverTimer);
+    if (activeWrap === wrap) {
+      previewVideo.pause();
+      previewVideo.removeAttribute("src");
+      previewVideo.load(); // reset
+      if (previewVideo.parentElement) previewVideo.parentElement.removeChild(previewVideo);
+      activeWrap = null;
+    }
+  }, true);
 });

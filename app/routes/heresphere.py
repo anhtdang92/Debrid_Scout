@@ -22,47 +22,60 @@ from flask import (
     render_template, send_file,
 )
 import logging
-import requests
+import os
+import time
 from datetime import datetime, timedelta, timezone
 from app.services.real_debrid import RealDebridService, RealDebridError
 from app.services.file_helper import FileHelper
 from app.services.vr_helper import (
-    is_video, guess_projection, launch_heresphere_exe,
+    is_video, is_subtitle, guess_projection, launch_heresphere_exe,
 )
-from app.services.thumbnail import ThumbnailService
-from app.services.user_data import UserDataStore
 
 heresphere_bp = Blueprint('heresphere', __name__)
 logger = logging.getLogger(__name__)
 
-# Lazily initialised singletons — created on first use
-_thumb_service = None
-_user_data = None
-
-
 def _get_thumb_service():
-    """Return the shared ThumbnailService instance."""
-    global _thumb_service
-    if _thumb_service is None:
-        _thumb_service = ThumbnailService()
-    return _thumb_service
+    """Return the shared ThumbnailService from app extensions."""
+    return current_app.extensions['thumb_service']
 
 
 def _get_user_data():
-    """Return the shared UserDataStore instance."""
-    global _user_data
-    if _user_data is None:
-        _user_data = UserDataStore()
-    return _user_data
+    """Return the shared UserDataStore from app extensions."""
+    return current_app.extensions['user_data']
+
+
+# ── Torrent info cache (TTL = 5 minutes) ────────────────────
+_torrent_cache = {}
+_TORRENT_CACHE_TTL = 300
+
+
+def _get_torrent_info_cached(service, torrent_id):
+    """Fetch torrent info via RealDebridService with a short TTL cache."""
+    now = time.time()
+    cached = _torrent_cache.get(torrent_id)
+    if cached and (now - cached['ts']) < _TORRENT_CACHE_TTL:
+        return cached['data']
+    data = service.get_torrent_info(torrent_id)
+    _torrent_cache[torrent_id] = {'data': data, 'ts': now}
+    return data
 
 
 @heresphere_bp.before_request
-def log_heresphere_request():
-    """Log every request that hits the heresphere blueprint for debugging."""
+def check_auth_and_log():
+    """Check optional auth token and log every request for debugging."""
     logger.info(f"[HS-DEBUG] {request.method} {request.url}")
     logger.info(f"[HS-DEBUG] Headers: {dict(request.headers)}")
     if request.data:
         logger.info(f"[HS-DEBUG] Body: {request.data[:500]}")
+
+    # Optional token-based auth — when HERESPHERE_AUTH_TOKEN is set,
+    # API requests must include a matching Authorization header.
+    # Browser HTML view (GET with Accept: text/html) is exempt.
+    token = current_app.config.get('HERESPHERE_AUTH_TOKEN')
+    if token and not _wants_html():
+        auth = request.headers.get('Authorization', '')
+        if auth != f'Bearer {token}':
+            return jsonify({"status": "error", "error": "Unauthorized"}), 401
 
 
 def _projection_label(projection, stereo, fov):
@@ -191,12 +204,14 @@ def _build_scan_entry(torrent, user_data):
         'heresphere.video_detail', torrent_id=torrent_id, _external=True,
     )
 
+    duration_ms = _get_thumb_service().get_duration(torrent_id)
+
     entry = {
         "link": detail_url,
         "title": title,
         "dateReleased": date_added,
         "dateAdded": date_added,
-        "duration": 0,
+        "duration": duration_ms,
         "isFavorite": user_data.is_favorite(torrent_id),
         "tags": tags,
     }
@@ -237,21 +252,29 @@ def library_index():
 
     # ── Browser HTML view ──────────────────────────────────────
     if _wants_html():
+        user_data = _get_user_data()
         videos = []
         for t in torrents:
             if t.get('status') != 'downloaded':
                 continue
             filename = t.get('filename', 'Unknown')
+            torrent_id = t.get('id', '')
             projection, stereo, fov, _lens = guess_projection(filename)
             total_bytes = t.get('bytes', 0) or 0
             videos.append({
-                'id': t.get('id', ''),
+                'id': torrent_id,
                 'name': FileHelper.simplify_filename(filename),
                 'raw_name': filename,
                 'projection_label': _projection_label(projection, stereo, fov),
                 'size': FileHelper.format_file_size(total_bytes),
+                'byte_size': total_bytes,
                 'added': (t.get('added') or '')[:10],
                 'links_count': len(t.get('links') or []),
+                'thumb_url': url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True),
+                'preview_url': url_for('heresphere.preview', torrent_id=torrent_id, _external=True),
+                'is_favorite': user_data.is_favorite(torrent_id),
+                'rating': user_data.get_rating(torrent_id),
+                'is_watched': user_data.is_watched(torrent_id),
             })
 
         hs_url = url_for('heresphere.library_index', _external=True)
@@ -367,16 +390,11 @@ def video_detail(torrent_id):
         # Persist any favorite/rating changes
         _get_user_data().process_heresphere_update(torrent_id, body)
 
-    headers = {'Authorization': f'Bearer {api_key}'}
+    service = RealDebridService(api_key=api_key)
 
     try:
-        resp = requests.get(
-            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
-            headers=headers
-        )
-        resp.raise_for_status()
-        torrent_data = resp.json()
-    except requests.exceptions.RequestException as e:
+        torrent_data = _get_torrent_info_cached(service, torrent_id)
+    except RealDebridError as e:
         logger.error(f"HereSphere: failed to fetch torrent {torrent_id}: {e}")
         return jsonify({"status": "error", "error": "Failed to fetch torrent info"}), 500
 
@@ -424,6 +442,9 @@ def video_detail(torrent_id):
     # Resume position — HereSphere uses currentTime (milliseconds)
     playback_seconds = user_data.get_playback_time(torrent_id)
 
+    # Duration from cached ffprobe metadata (milliseconds, 0 if unknown)
+    duration_ms = _get_thumb_service().get_duration(torrent_id)
+
     # ── Build base response with ALL HereSphere fields ────────
     base_response = {
         "access": 1,
@@ -433,7 +454,7 @@ def video_detail(torrent_id):
         "thumbnailVideo": preview_url,
         "dateReleased": date_added,
         "dateAdded": date_added,
-        "duration": 0,
+        "duration": duration_ms,
         "currentTime": playback_seconds * 1000.0,
         "rating": user_data.get_rating(torrent_id),
         "isFavorite": user_data.is_favorite(torrent_id),
@@ -460,19 +481,46 @@ def video_detail(torrent_id):
         return resp
 
     # ── Full response with playable sources ───────────────────
-    service = RealDebridService(api_key=api_key)
-    unrestricted_links = []
-    for link in links:
-        try:
-            unrestricted_links.append(service.unrestrict_link(link))
-        except RealDebridError:
-            unrestricted_links.append(link)
-
-    link_map = {}
-    for f, link in zip(selected_files, unrestricted_links):
+    # Build file-ID → restricted-link mapping using positional correspondence
+    # (RD returns links[] in the same order as selected files)
+    restricted_map = {}
+    for i, f in enumerate(selected_files):
         fid = f.get('id')
-        if fid is not None and link:
-            link_map[fid] = link
+        if fid is not None and i < len(links):
+            restricted_map[fid] = links[i]
+
+    # Only unrestrict links for video files (skip non-video to avoid
+    # wasting API calls and 0.2s rate-limit delays per link)
+    video_file_ids = {f.get('id') for f in video_files}
+    link_map = {}
+    for fid, restricted_link in restricted_map.items():
+        if fid not in video_file_ids:
+            continue
+        try:
+            link_map[fid] = service.unrestrict_link(restricted_link)
+        except RealDebridError:
+            link_map[fid] = restricted_link
+
+    # Detect and unrestrict subtitle files
+    subtitle_entries = []
+    for f in selected_files:
+        fname = f.get('path', '').split('/')[-1]
+        fid = f.get('id')
+        if is_subtitle(fname) and fid in restricted_map:
+            try:
+                sub_url = service.unrestrict_link(restricted_map[fid])
+            except RealDebridError:
+                sub_url = restricted_map[fid]
+            # Determine format from extension
+            ext = os.path.splitext(fname)[1].lower().lstrip('.')
+            subtitle_entries.append({
+                "name": fname,
+                "url": sub_url,
+                "language": "en",
+                "format": ext,
+            })
+    if subtitle_entries:
+        base_response["subtitles"] = subtitle_entries
 
     # Build one media entry per video file (XBVR style: "File 1/N - size")
     media_entries = []
@@ -516,39 +564,34 @@ def _get_direct_video_url(torrent_id):
         return None
 
     try:
-        headers = {'Authorization': f'Bearer {api_key}'}
-        resp = requests.get(
-            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
-            headers=headers,
-        )
-        resp.raise_for_status()
-        torrent_data = resp.json()
-    except requests.exceptions.RequestException:
+        service = RealDebridService(api_key=api_key)
+        torrent_data = _get_torrent_info_cached(service, torrent_id)
+    except RealDebridError:
         return None
 
     files = torrent_data.get('files') or []
     links = torrent_data.get('links') or []
     selected = [f for f in files if f.get('selected') == 1]
 
-    # Find the largest video file and its corresponding link
-    video_link = None
+    # Build file-ID → restricted-link mapping by position
+    restricted_map = {}
+    for i, f in enumerate(selected):
+        fid = f.get('id')
+        if fid is not None and i < len(links):
+            restricted_map[fid] = links[i]
+
+    # Find the largest video file that has a link
     sorted_files = sorted(selected, key=lambda f: f.get('bytes', 0), reverse=True)
-    for i, f in enumerate(sorted_files):
+    for f in sorted_files:
         fname = f.get('path', '').split('/')[-1]
-        if is_video(fname) and i < len(links):
-            idx = selected.index(f)
-            if idx < len(links):
-                video_link = links[idx]
-                break
+        fid = f.get('id')
+        if is_video(fname) and fid in restricted_map:
+            try:
+                return service.unrestrict_link(restricted_map[fid])
+            except RealDebridError:
+                return None
 
-    if not video_link:
-        return None
-
-    try:
-        service = RealDebridService(api_key=api_key)
-        return service.unrestrict_link(video_link)
-    except RealDebridError:
-        return None
+    return None
 
 
 # ── GET /heresphere/thumb/<torrent_id> — Thumbnail server ─────
@@ -557,9 +600,9 @@ def thumbnail(torrent_id):
     """
     Serve a video thumbnail for a torrent.
 
-    On first request, unrestricts the first video link and uses ffmpeg to
-    extract a single frame.  The result is cached to disk so subsequent
-    requests are instant.
+    If the thumbnail is cached, serve it immediately. Otherwise, kick off
+    background generation and return a placeholder so the request doesn't
+    block for up to 30 seconds while ffmpeg runs.
     """
     svc = _get_thumb_service()
 
@@ -571,15 +614,15 @@ def thumbnail(torrent_id):
         logger.debug("ffmpeg not available — skipping thumbnail generation")
         return '', 404
 
-    direct_url = _get_direct_video_url(torrent_id)
-    if not direct_url:
-        return '', 404
+    # Start background generation if not already in progress
+    if not svc.is_generating(torrent_id):
+        direct_url = _get_direct_video_url(torrent_id)
+        if direct_url:
+            svc.generate_async(torrent_id, direct_url)
 
-    path = svc.generate(torrent_id, direct_url)
-    if path:
-        return send_file(path, mimetype='image/jpeg')
-
-    return '', 404
+    # Return a placeholder — the client will get the real thumbnail
+    # on its next request (HereSphere/browsers retry on reload)
+    return '', 202
 
 
 # ── GET /heresphere/preview/<torrent_id> — Animated preview ───
