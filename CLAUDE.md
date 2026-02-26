@@ -60,6 +60,7 @@ Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream
 | POST | `/heresphere/launch_heresphere` | heresphere | `launch_heresphere()` | Launch HereSphere.exe locally |
 | GET/POST | `/deovr` | deovr | `library_index()` | DeoVR library listing (JSON) |
 | GET/POST | `/deovr/<id>` | deovr | `video_detail()` | DeoVR video detail with playable sources |
+| POST | `/deovr/event/<id>` | deovr | `event()` | Receive playback events (play/pause/close + position) |
 | POST | `/deovr/launch_heresphere` | deovr | `launch_heresphere()` | Launch HereSphere.exe from DeoVR context |
 | GET | `/about` | info | `about()` | About page |
 | GET | `/contact` | info | `contact()` | Contact page |

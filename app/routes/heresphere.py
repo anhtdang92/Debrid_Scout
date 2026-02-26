@@ -421,6 +421,9 @@ def video_detail(torrent_id):
     else:
         tags.append({"name": "Feature:Unwatched"})
 
+    # Resume position — HereSphere uses currentTime (milliseconds)
+    playback_seconds = user_data.get_playback_time(torrent_id)
+
     # ── Build base response with ALL HereSphere fields ────────
     base_response = {
         "access": 1,
@@ -431,6 +434,7 @@ def video_detail(torrent_id):
         "dateReleased": date_added,
         "dateAdded": date_added,
         "duration": 0,
+        "currentTime": playback_seconds * 1000.0,
         "rating": user_data.get_rating(torrent_id),
         "isFavorite": user_data.is_favorite(torrent_id),
         "projection": projection,
