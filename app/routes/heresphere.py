@@ -237,6 +237,7 @@ def library_index():
 
     # ── Browser HTML view ──────────────────────────────────────
     if _wants_html():
+        user_data = _get_user_data()
         videos = []
         for t in torrents:
             if t.get('status') != 'downloaded':
@@ -254,6 +255,9 @@ def library_index():
                 'added': (t.get('added') or '')[:10],
                 'links_count': len(t.get('links') or []),
                 'thumb_url': url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True),
+                'is_favorite': user_data.is_favorite(torrent_id),
+                'rating': user_data.get_rating(torrent_id),
+                'is_watched': user_data.is_watched(torrent_id),
             })
 
         hs_url = url_for('heresphere.library_index', _external=True)

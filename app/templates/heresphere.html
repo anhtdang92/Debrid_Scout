@@ -54,6 +54,12 @@
                 <i class="fa-solid fa-film"></i>
             </div>
             <span class="hs-badge hs-badge-overlay">{{ v.projection_label }}</span>
+            {% if v.is_favorite %}
+            <span class="hs-favorite-badge" title="Favorite"><i class="fa-solid fa-heart"></i></span>
+            {% endif %}
+            {% if v.is_watched %}
+            <span class="hs-watched-badge" title="Watched"><i class="fa-solid fa-eye"></i></span>
+            {% endif %}
         </div>
         <div class="hs-card-body">
             <div class="hs-card-title-row">
@@ -62,6 +68,19 @@
                 <span class="hs-date">{{ v.added }}</span>
                 {% endif %}
             </div>
+            {% if v.rating %}
+            <div class="hs-card-rating" title="{{ v.rating }} / 5">
+                {% for i in range(1, 6) %}
+                    {% if v.rating >= i %}
+                    <i class="fa-solid fa-star"></i>
+                    {% elif v.rating >= i - 0.5 %}
+                    <i class="fa-solid fa-star-half-stroke"></i>
+                    {% else %}
+                    <i class="fa-regular fa-star"></i>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
             <div class="hs-card-meta">
                 <span><i class="fa-solid fa-hard-drive"></i> {{ v.size }}</span>
                 {% if v.links_count %}

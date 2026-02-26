@@ -1053,6 +1053,45 @@ input[type="checkbox"]:checked::after {
     backdrop-filter: blur(4px);
 }
 
+/* Favorite heart — top-right of thumbnail */
+.hs-favorite-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    color: #f87171;
+    font-size: 1.1rem;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+/* Watched eye — top-left of thumbnail */
+.hs-watched-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    color: var(--green);
+    font-size: 0.85rem;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
+}
+
+/* Star rating row */
+.hs-card-rating {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 6px;
+    font-size: 0.75rem;
+    color: #fbbf24;
+}
+
+.hs-card-rating .fa-regular {
+    color: var(--text-muted);
+    opacity: 0.4;
+}
+
 .hs-date {
     color: var(--text-muted);
     font-size: 0.75rem;
