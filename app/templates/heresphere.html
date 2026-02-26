@@ -30,11 +30,22 @@
 </div>
 {% endif %}
 
-<!-- Search / Filter -->
+<!-- Search / Filter / Sort -->
 <div class="hs-toolbar">
     <div class="hs-search-wrap">
         <i class="fa-solid fa-magnifying-glass hs-search-icon"></i>
         <input type="text" id="hs-search" class="hs-search" placeholder="Filter library..." autocomplete="off">
+    </div>
+    <div class="hs-sort-wrap">
+        <label for="hs-sort" class="hs-sort-label"><i class="fa-solid fa-arrow-down-wide-short"></i></label>
+        <select id="hs-sort" class="hs-sort">
+            <option value="date-desc">Date (Newest)</option>
+            <option value="date-asc">Date (Oldest)</option>
+            <option value="name-asc">Name (A-Z)</option>
+            <option value="name-desc">Name (Z-A)</option>
+            <option value="size-desc">Size (Largest)</option>
+            <option value="size-asc">Size (Smallest)</option>
+        </select>
     </div>
     <span class="hs-count" id="hs-count">{{ videos|length }} video{{ 's' if videos|length != 1 else '' }}</span>
 </div>
@@ -43,7 +54,7 @@
 {% if videos %}
 <div class="hs-grid" id="hs-grid">
     {% for v in videos %}
-    <div class="hs-card" data-id="{{ v.id }}">
+    <div class="hs-card" data-id="{{ v.id }}" data-name="{{ v.name|lower }}" data-date="{{ v.added }}" data-size="{{ v.byte_size }}">
         <div class="hs-thumb-wrap">
             <img class="hs-thumb"
                  src="{{ v.thumb_url }}"

@@ -252,6 +252,7 @@ def library_index():
                 'raw_name': filename,
                 'projection_label': _projection_label(projection, stereo, fov),
                 'size': FileHelper.format_file_size(total_bytes),
+                'byte_size': total_bytes,
                 'added': (t.get('added') or '')[:10],
                 'links_count': len(t.get('links') or []),
                 'thumb_url': url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True),
