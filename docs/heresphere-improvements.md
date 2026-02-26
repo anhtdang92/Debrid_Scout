@@ -111,7 +111,7 @@ Line 472 uses `zip(selected_files, unrestricted_links)`, which assumes 1:1 posit
 
 ---
 
-### 10. Populate `duration` Field
+### 10. Populate `duration` Field ✅
 **Priority: Low | Effort: Medium**
 
 The API returns `"duration": 0` everywhere. HereSphere uses this for progress bars and sorting.
@@ -122,7 +122,7 @@ The API returns `"duration": 0` everywhere. HereSphere uses this for progress ba
 
 ---
 
-### 11. Detect and Serve Subtitles
+### 11. Detect and Serve Subtitles ✅
 **Priority: Low | Effort: Medium**
 
 If a torrent contains `.srt`/`.ass` files alongside the video, they could be detected and served. HereSphere supports the `subtitles` array natively.
@@ -133,7 +133,7 @@ If a torrent contains `.srt`/`.ass` files alongside the video, they could be det
 
 ---
 
-### 12. Add Authentication
+### 12. Add Authentication ✅
 **Priority: Medium | Effort: Low**
 
 Anyone on the local network can browse and download the entire library. HereSphere supports sending auth headers.
@@ -147,7 +147,7 @@ Anyone on the local network can browse and download the entire library. HereSphe
 
 ## Architecture
 
-### 13. Singleton Pattern Improvement
+### 13. Singleton Pattern Improvement ✅
 **Priority: Low | Effort: Medium**
 
 `_thumb_service` and `_user_data` are module-level globals. With multiple gunicorn workers, each gets its own instance. `UserDataStore` writes to disk but has race conditions between workers.
@@ -158,7 +158,7 @@ Anyone on the local network can browse and download the entire library. HereSphe
 
 ---
 
-### 14. Non-Blocking Thumbnail Generation
+### 14. Non-Blocking Thumbnail Generation ✅
 **Priority: Low | Effort: High**
 
 The first request to `/heresphere/thumb/<id>` blocks while ffmpeg runs (up to 30s).

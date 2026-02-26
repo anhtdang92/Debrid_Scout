@@ -143,6 +143,12 @@ def create_app():
             "real_debrid_api_error": getattr(g, 'real_debrid_api_error', None),
         }
 
+    # ── Register shared services as app extensions ───────────
+    from app.services.user_data import UserDataStore
+    from app.services.thumbnail import ThumbnailService
+    app.extensions['user_data'] = UserDataStore()
+    app.extensions['thumb_service'] = ThumbnailService()
+
     # Register Blueprints
     app.register_blueprint(search_bp, url_prefix='/')
     app.register_blueprint(account_bp, url_prefix='/account')

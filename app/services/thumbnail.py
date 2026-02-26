@@ -7,10 +7,12 @@ Extracts a single frame from a remote video URL and caches it to disk.
 HereSphere and DeoVR use the cached thumbnails for library grid display.
 """
 
+import json
 import os
 import subprocess
 import shutil
 import logging
+import threading
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -38,11 +40,76 @@ class ThumbnailService:
         os.makedirs(self.cache_dir, exist_ok=True)
         os.makedirs(self.preview_dir, exist_ok=True)
         self._ffmpeg = shutil.which('ffmpeg')
+        self._ffprobe = shutil.which('ffprobe')
+        self._generating = set()  # torrent IDs currently being generated
+        self._gen_lock = threading.Lock()
 
     @property
     def available(self) -> bool:
         """True if ffmpeg is installed on this system."""
         return self._ffmpeg is not None
+
+    # ── Duration metadata ──────────────────────────────────────
+
+    def _meta_path(self, torrent_id: str) -> str:
+        """Return the path to the JSON metadata sidecar for a torrent."""
+        return os.path.join(self.cache_dir, f"{torrent_id}.json")
+
+    def get_duration(self, torrent_id: str) -> float:
+        """Return cached duration in milliseconds, or 0 if unknown."""
+        path = self._meta_path(torrent_id)
+        if not os.path.isfile(path):
+            return 0
+        try:
+            with open(path, 'r') as f:
+                return json.load(f).get('duration_ms', 0)
+        except (json.JSONDecodeError, OSError):
+            return 0
+
+    def probe_duration(self, torrent_id: str, video_url: str) -> float:
+        """
+        Extract video duration via ffprobe and cache it as a JSON sidecar.
+
+        Returns duration in milliseconds, or 0 on failure.
+        """
+        # Return from cache if already probed
+        cached = self.get_duration(torrent_id)
+        if cached > 0:
+            return cached
+
+        if not self._ffprobe:
+            return 0
+
+        try:
+            result = subprocess.run(
+                [
+                    self._ffprobe,
+                    '-v', 'quiet',
+                    '-print_format', 'json',
+                    '-show_format',
+                    video_url,
+                ],
+                capture_output=True,
+                timeout=15,
+            )
+            if result.returncode != 0:
+                return 0
+
+            data = json.loads(result.stdout)
+            seconds = float(data.get('format', {}).get('duration', 0))
+            duration_ms = seconds * 1000.0
+
+            if duration_ms > 0:
+                meta_path = self._meta_path(torrent_id)
+                with open(meta_path, 'w') as f:
+                    json.dump({'duration_ms': duration_ms}, f)
+                logger.info(f"Duration probed for {torrent_id}: {seconds:.1f}s")
+
+            return duration_ms
+
+        except (subprocess.TimeoutExpired, Exception) as e:
+            logger.warning(f"ffprobe failed for {torrent_id}: {e}")
+            return 0
 
     def get_cached_path(self, torrent_id: str) -> Optional[str]:
         """Return the cached thumbnail path if it exists, else None."""
@@ -89,6 +156,8 @@ class ThumbnailService:
             if result.returncode == 0 and os.path.isfile(output_path):
                 size = os.path.getsize(output_path)
                 logger.info(f"Thumbnail generated for {torrent_id}: {size} bytes")
+                # Opportunistically probe duration while we have the URL
+                self.probe_duration(torrent_id, video_url)
                 return output_path
 
             stderr = result.stderr.decode(errors='replace')[:300]
@@ -108,6 +177,36 @@ class ThumbnailService:
         except Exception as e:
             logger.error(f"Thumbnail generation error for {torrent_id}: {e}")
             return None
+
+    def generate_async(self, torrent_id: str, video_url: str):
+        """
+        Start thumbnail generation in a background thread.
+
+        Returns True if generation was started, False if already cached
+        or already in progress.
+        """
+        if self.get_cached_path(torrent_id):
+            return False
+        with self._gen_lock:
+            if torrent_id in self._generating:
+                return False
+            self._generating.add(torrent_id)
+
+        def _worker():
+            try:
+                self.generate(torrent_id, video_url)
+            finally:
+                with self._gen_lock:
+                    self._generating.discard(torrent_id)
+
+        thread = threading.Thread(target=_worker, daemon=True)
+        thread.start()
+        return True
+
+    def is_generating(self, torrent_id: str) -> bool:
+        """Return True if a background generation is in progress."""
+        with self._gen_lock:
+            return torrent_id in self._generating
 
     # ── Preview clip generation ───────────────────────────────
 

@@ -22,38 +22,26 @@ from flask import (
     render_template, send_file,
 )
 import logging
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from app.services.real_debrid import RealDebridService, RealDebridError
 from app.services.file_helper import FileHelper
 from app.services.vr_helper import (
-    is_video, guess_projection, launch_heresphere_exe,
+    is_video, is_subtitle, guess_projection, launch_heresphere_exe,
 )
-from app.services.thumbnail import ThumbnailService
-from app.services.user_data import UserDataStore
 
 heresphere_bp = Blueprint('heresphere', __name__)
 logger = logging.getLogger(__name__)
 
-# Lazily initialised singletons — created on first use
-_thumb_service = None
-_user_data = None
-
-
 def _get_thumb_service():
-    """Return the shared ThumbnailService instance."""
-    global _thumb_service
-    if _thumb_service is None:
-        _thumb_service = ThumbnailService()
-    return _thumb_service
+    """Return the shared ThumbnailService from app extensions."""
+    return current_app.extensions['thumb_service']
 
 
 def _get_user_data():
-    """Return the shared UserDataStore instance."""
-    global _user_data
-    if _user_data is None:
-        _user_data = UserDataStore()
-    return _user_data
+    """Return the shared UserDataStore from app extensions."""
+    return current_app.extensions['user_data']
 
 
 # ── Torrent info cache (TTL = 5 minutes) ────────────────────
@@ -73,12 +61,21 @@ def _get_torrent_info_cached(service, torrent_id):
 
 
 @heresphere_bp.before_request
-def log_heresphere_request():
-    """Log every request that hits the heresphere blueprint for debugging."""
+def check_auth_and_log():
+    """Check optional auth token and log every request for debugging."""
     logger.info(f"[HS-DEBUG] {request.method} {request.url}")
     logger.info(f"[HS-DEBUG] Headers: {dict(request.headers)}")
     if request.data:
         logger.info(f"[HS-DEBUG] Body: {request.data[:500]}")
+
+    # Optional token-based auth — when HERESPHERE_AUTH_TOKEN is set,
+    # API requests must include a matching Authorization header.
+    # Browser HTML view (GET with Accept: text/html) is exempt.
+    token = current_app.config.get('HERESPHERE_AUTH_TOKEN')
+    if token and not _wants_html():
+        auth = request.headers.get('Authorization', '')
+        if auth != f'Bearer {token}':
+            return jsonify({"status": "error", "error": "Unauthorized"}), 401
 
 
 def _projection_label(projection, stereo, fov):
@@ -207,12 +204,14 @@ def _build_scan_entry(torrent, user_data):
         'heresphere.video_detail', torrent_id=torrent_id, _external=True,
     )
 
+    duration_ms = _get_thumb_service().get_duration(torrent_id)
+
     entry = {
         "link": detail_url,
         "title": title,
         "dateReleased": date_added,
         "dateAdded": date_added,
-        "duration": 0,
+        "duration": duration_ms,
         "isFavorite": user_data.is_favorite(torrent_id),
         "tags": tags,
     }
@@ -443,6 +442,9 @@ def video_detail(torrent_id):
     # Resume position — HereSphere uses currentTime (milliseconds)
     playback_seconds = user_data.get_playback_time(torrent_id)
 
+    # Duration from cached ffprobe metadata (milliseconds, 0 if unknown)
+    duration_ms = _get_thumb_service().get_duration(torrent_id)
+
     # ── Build base response with ALL HereSphere fields ────────
     base_response = {
         "access": 1,
@@ -452,7 +454,7 @@ def video_detail(torrent_id):
         "thumbnailVideo": preview_url,
         "dateReleased": date_added,
         "dateAdded": date_added,
-        "duration": 0,
+        "duration": duration_ms,
         "currentTime": playback_seconds * 1000.0,
         "rating": user_data.get_rating(torrent_id),
         "isFavorite": user_data.is_favorite(torrent_id),
@@ -498,6 +500,27 @@ def video_detail(torrent_id):
             link_map[fid] = service.unrestrict_link(restricted_link)
         except RealDebridError:
             link_map[fid] = restricted_link
+
+    # Detect and unrestrict subtitle files
+    subtitle_entries = []
+    for f in selected_files:
+        fname = f.get('path', '').split('/')[-1]
+        fid = f.get('id')
+        if is_subtitle(fname) and fid in restricted_map:
+            try:
+                sub_url = service.unrestrict_link(restricted_map[fid])
+            except RealDebridError:
+                sub_url = restricted_map[fid]
+            # Determine format from extension
+            ext = os.path.splitext(fname)[1].lower().lstrip('.')
+            subtitle_entries.append({
+                "name": fname,
+                "url": sub_url,
+                "language": "en",
+                "format": ext,
+            })
+    if subtitle_entries:
+        base_response["subtitles"] = subtitle_entries
 
     # Build one media entry per video file (XBVR style: "File 1/N - size")
     media_entries = []
@@ -577,9 +600,9 @@ def thumbnail(torrent_id):
     """
     Serve a video thumbnail for a torrent.
 
-    On first request, unrestricts the first video link and uses ffmpeg to
-    extract a single frame.  The result is cached to disk so subsequent
-    requests are instant.
+    If the thumbnail is cached, serve it immediately. Otherwise, kick off
+    background generation and return a placeholder so the request doesn't
+    block for up to 30 seconds while ffmpeg runs.
     """
     svc = _get_thumb_service()
 
@@ -591,15 +614,15 @@ def thumbnail(torrent_id):
         logger.debug("ffmpeg not available — skipping thumbnail generation")
         return '', 404
 
-    direct_url = _get_direct_video_url(torrent_id)
-    if not direct_url:
-        return '', 404
+    # Start background generation if not already in progress
+    if not svc.is_generating(torrent_id):
+        direct_url = _get_direct_video_url(torrent_id)
+        if direct_url:
+            svc.generate_async(torrent_id, direct_url)
 
-    path = svc.generate(torrent_id, direct_url)
-    if path:
-        return send_file(path, mimetype='image/jpeg')
-
-    return '', 404
+    # Return a placeholder — the client will get the real thumbnail
+    # on its next request (HereSphere/browsers retry on reload)
+    return '', 202
 
 
 # ── GET /heresphere/preview/<torrent_id> — Animated preview ───

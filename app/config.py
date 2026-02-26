@@ -20,6 +20,7 @@ class Config:
     JACKETT_API_KEY = os.getenv('JACKETT_API_KEY')
     JACKETT_URL = os.getenv('JACKETT_URL', 'http://localhost:9117')
     REAL_DEBRID_API_KEY = os.getenv('REAL_DEBRID_API_KEY')
+    HERESPHERE_AUTH_TOKEN = os.getenv('HERESPHERE_AUTH_TOKEN')  # optional
 
 class DevelopmentConfig(Config):
     """Development-specific configuration."""

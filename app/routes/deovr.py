@@ -20,30 +20,29 @@ from app.services.file_helper import FileHelper
 from app.services.vr_helper import (
     is_video, guess_projection_deovr, launch_heresphere_exe,
 )
-from app.services.user_data import UserDataStore
-from app.routes.heresphere import _get_torrent_info_cached
+from app.routes.heresphere import _get_torrent_info_cached, _get_thumb_service
 
 deovr_bp = Blueprint('deovr', __name__)
 logger = logging.getLogger(__name__)
 
-_user_data = None
-
-
 def _get_user_data():
-    """Return the shared UserDataStore instance."""
-    global _user_data
-    if _user_data is None:
-        _user_data = UserDataStore()
-    return _user_data
+    """Return the shared UserDataStore from app extensions."""
+    return current_app.extensions['user_data']
 
 
 @deovr_bp.before_request
-def log_deovr_request():
-    """Log every request that hits the deovr blueprint for debugging."""
+def check_auth_and_log():
+    """Check optional auth token and log every request for debugging."""
     logger.info(f"[DEOVR-DEBUG] {request.method} {request.url}")
     logger.info(f"[DEOVR-DEBUG] Headers: {dict(request.headers)}")
     if request.data:
         logger.info(f"[DEOVR-DEBUG] Body: {request.data[:500]}")
+
+    token = current_app.config.get('HERESPHERE_AUTH_TOKEN')
+    if token:
+        auth = request.headers.get('Authorization', '')
+        if auth != f'Bearer {token}':
+            return jsonify({"status": "error", "error": "Unauthorized"}), 401
 
 
 # ── GET/POST /deovr — Library listing ─────────────────────
@@ -156,7 +155,7 @@ def video_detail(torrent_id):
     if not needs_media:
         return jsonify({
             "title": filename,
-            "videoLength": 0,
+            "videoLength": _get_thumb_service().get_duration(torrent_id) / 1000.0,
             "thumbnailUrl": thumb_url,
             "screenType": screen_type,
             "stereoMode": stereo_mode,
@@ -217,7 +216,7 @@ def video_detail(torrent_id):
 
     response = {
         "title": FileHelper.simplify_filename(filename),
-        "videoLength": 0,
+        "videoLength": _get_thumb_service().get_duration(torrent_id) / 1000.0,
         "thumbnailUrl": thumb_url,
         "screenType": screen_type,
         "stereoMode": stereo_mode,
