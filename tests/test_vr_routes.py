@@ -2,7 +2,10 @@
 
 """Tests for HereSphere and DeoVR VR route endpoints."""
 
+import json
+import os
 import pytest
+import tempfile
 from unittest.mock import patch, MagicMock
 
 
@@ -80,7 +83,7 @@ def test_heresphere_library_html(client, mocked_responses):
 
 
 def test_heresphere_video_detail_metadata(client, mocked_responses):
-    """POST /heresphere/<id> with needsMediaSource=false returns metadata only."""
+    """POST /heresphere/<id> with needsMediaSource=false returns full metadata."""
     mocked_responses.get(
         "https://api.real-debrid.com/rest/1.0/user",
         json=MOCK_USER, status=200,
@@ -100,6 +103,28 @@ def test_heresphere_video_detail_metadata(client, mocked_responses):
     assert data["media"] == []
     assert data["projection"] == "equirectangular"
     assert data["stereo"] == "sbs"
+
+    # ── Enriched fields ──────────────────────────────────
+    assert "thumbnailImage" in data
+    assert "/heresphere/thumb/torrent1" in data["thumbnailImage"]
+    assert data["isFavorite"] is False
+    assert data["rating"] == 0
+    # Write-back is now enabled for favorites and ratings
+    assert data["writeFavorite"] is True
+    assert data["writeRating"] is True
+    assert data["writeTags"] is False
+    assert data["writeHSP"] is False
+    assert data["subtitles"] == []
+    assert data["scripts"] == []
+    assert "thumbnailVideo" in data
+
+    # ── XBVR-style date tags ─────────────────────────────
+    tag_names = [t["name"] for t in data["tags"]]
+    assert "Feature:Year: 2026" in tag_names
+    assert "Feature:Month: 2026-02" in tag_names
+    # FOV and stereo tags should also be present
+    assert "Feature:FOV: 180°" in tag_names
+    assert "Feature:SBS" in tag_names
 
 
 def test_heresphere_video_detail_with_media(client, mocked_responses):
@@ -123,6 +148,69 @@ def test_heresphere_video_detail_with_media(client, mocked_responses):
     data = response.json
     assert len(data["media"]) == 1
     assert "url" in data["media"][0]["sources"][0]
+    # Enriched fields should still be present on full response
+    assert "thumbnailImage" in data
+    assert "isFavorite" in data
+    assert data["writeFavorite"] is True
+
+
+# ── Write-back tests (XBVR pattern) ──────────────────────────
+
+def test_heresphere_write_favorite(client, mocked_responses):
+    """POST /heresphere/<id> with isFavorite=true persists the favorite."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+
+    with patch('app.routes.heresphere._get_user_data') as mock_store:
+        store = MagicMock()
+        mock_store.return_value = store
+        store.is_favorite.return_value = True
+        store.get_rating.return_value = 0.0
+
+        response = client.post(
+            "/heresphere/torrent1",
+            json={"needsMediaSource": False, "isFavorite": True},
+        )
+
+    assert response.status_code == 200
+    assert response.json["isFavorite"] is True
+    # Verify the store was called with the write-back data
+    store.process_heresphere_update.assert_called_once_with(
+        "torrent1", {"needsMediaSource": False, "isFavorite": True}
+    )
+
+
+def test_heresphere_write_rating(client, mocked_responses):
+    """POST /heresphere/<id> with rating=4.5 persists the rating."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+
+    with patch('app.routes.heresphere._get_user_data') as mock_store:
+        store = MagicMock()
+        mock_store.return_value = store
+        store.is_favorite.return_value = False
+        store.get_rating.return_value = 4.5
+
+        response = client.post(
+            "/heresphere/torrent1",
+            json={"needsMediaSource": False, "rating": 4.5},
+        )
+
+    assert response.status_code == 200
+    assert response.json["rating"] == 4.5
+    store.process_heresphere_update.assert_called_once()
 
 
 def test_heresphere_launch(client, mocked_responses):
@@ -156,10 +244,53 @@ def test_heresphere_launch_no_url(client, mocked_responses):
     assert response.status_code == 400
 
 
+# ── Thumbnail endpoint tests ─────────────────────────────────
+
+def test_heresphere_thumb_cached(client, mocked_responses):
+    """GET /heresphere/thumb/<id> serves a cached thumbnail."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    # Create a fake cached thumbnail
+    with patch('app.routes.heresphere._get_thumb_service') as mock_svc:
+        svc = MagicMock()
+        mock_svc.return_value = svc
+
+        # Simulate a cached JPEG file
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
+            f.write(b'\xff\xd8\xff\xe0' + b'\x00' * 100)  # Fake JPEG header
+            tmp_path = f.name
+
+        try:
+            svc.get_cached_path.return_value = tmp_path
+            response = client.get("/heresphere/thumb/torrent1")
+            assert response.status_code == 200
+            assert response.content_type == 'image/jpeg'
+        finally:
+            os.unlink(tmp_path)
+
+
+def test_heresphere_thumb_no_ffmpeg(client, mocked_responses):
+    """GET /heresphere/thumb/<id> returns 404 when ffmpeg is unavailable."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.heresphere._get_thumb_service') as mock_svc:
+        svc = MagicMock()
+        mock_svc.return_value = svc
+        svc.get_cached_path.return_value = None
+        svc.available = False
+
+        response = client.get("/heresphere/thumb/torrent1")
+        assert response.status_code == 404
+
+
 # ── DeoVR tests ───────────────────────────────────────────────
 
 def test_deovr_library(client, mocked_responses):
-    """GET /deovr returns DeoVR JSON library."""
+    """GET /deovr returns DeoVR JSON library with thumbnail URLs."""
     mocked_responses.get(
         "https://api.real-debrid.com/rest/1.0/user",
         json=MOCK_USER, status=200,
@@ -174,10 +305,16 @@ def test_deovr_library(client, mocked_responses):
     assert len(data["scenes"]) == 1
     # Only 'downloaded' torrents should appear
     assert len(data["scenes"][0]["list"]) == 1
+    # Thumbnail URL should be present
+    video = data["scenes"][0]["list"][0]
+    assert "thumbnailUrl" in video
+    assert "/heresphere/thumb/torrent1" in video["thumbnailUrl"]
+    # Title should be simplified (dots → spaces)
+    assert "." not in video["title"] or video["title"].endswith(".mp4")
 
 
 def test_deovr_video_detail_metadata(client, mocked_responses):
-    """POST /deovr/<id> with needsMediaSource=false returns metadata."""
+    """POST /deovr/<id> with needsMediaSource=false returns metadata with thumbnail."""
     mocked_responses.get(
         "https://api.real-debrid.com/rest/1.0/user",
         json=MOCK_USER, status=200,
@@ -196,10 +333,13 @@ def test_deovr_video_detail_metadata(client, mocked_responses):
     assert "stereoMode" in data
     assert data["screenType"] == "dome"
     assert data["stereoMode"] == "sbs"
+    # Thumbnail URL should be present
+    assert "thumbnailUrl" in data
+    assert "/heresphere/thumb/torrent1" in data["thumbnailUrl"]
 
 
 def test_deovr_video_detail_with_media(client, mocked_responses):
-    """POST /deovr/<id> with needsMediaSource=true returns playable sources."""
+    """POST /deovr/<id> with needsMediaSource=true returns playable sources with favorite."""
     mocked_responses.get(
         "https://api.real-debrid.com/rest/1.0/user",
         json=MOCK_USER, status=200,
@@ -219,6 +359,8 @@ def test_deovr_video_detail_with_media(client, mocked_responses):
     data = response.json
     assert "encodings" in data
     assert len(data["encodings"][0]["videoSources"]) == 1
+    # isFavorite should be present (read from shared store)
+    assert "isFavorite" in data
 
 
 def test_deovr_launch(client, mocked_responses):
@@ -301,3 +443,104 @@ def test_guess_projection_deovr_mapping():
 
     screen, stereo = guess_projection_deovr("Video_FLAT.mp4")
     assert screen == "flat"
+
+
+# ── ThumbnailService unit tests ──────────────────────────────
+
+def test_thumbnail_service_no_ffmpeg():
+    """ThumbnailService.available is False when ffmpeg is missing."""
+    from app.services.thumbnail import ThumbnailService
+    with patch('shutil.which', return_value=None):
+        svc = ThumbnailService(cache_dir=tempfile.mkdtemp())
+    assert svc.available is False
+    assert svc.generate("test", "http://example.com/video.mp4") is None
+
+
+def test_thumbnail_service_cache_hit():
+    """ThumbnailService returns cached path without running ffmpeg."""
+    from app.services.thumbnail import ThumbnailService
+    cache_dir = tempfile.mkdtemp()
+    # Pre-populate cache
+    cached_file = os.path.join(cache_dir, "cached_id.jpg")
+    with open(cached_file, 'wb') as f:
+        f.write(b'\xff\xd8\xff\xe0JFIF')
+
+    svc = ThumbnailService(cache_dir=cache_dir)
+    result = svc.get_cached_path("cached_id")
+    assert result == cached_file
+
+    # generate() should also return from cache without running ffmpeg
+    with patch('shutil.which', return_value="/usr/bin/ffmpeg"):
+        svc2 = ThumbnailService(cache_dir=cache_dir)
+    result = svc2.generate("cached_id", "http://example.com/video.mp4")
+    assert result == cached_file
+
+
+# ── UserDataStore unit tests ─────────────────────────────────
+
+def test_user_data_store_read_write():
+    """UserDataStore persists favorites and ratings to disk."""
+    from app.services.user_data import UserDataStore
+    data_dir = tempfile.mkdtemp()
+
+    store = UserDataStore(data_dir=data_dir)
+
+    # Defaults
+    assert store.is_favorite("t1") is False
+    assert store.get_rating("t1") == 0.0
+
+    # Set values
+    store.set_favorite("t1", True)
+    store.set_rating("t1", 4.5)
+
+    assert store.is_favorite("t1") is True
+    assert store.get_rating("t1") == 4.5
+
+    # Verify persistence — new instance reads from disk
+    store2 = UserDataStore(data_dir=data_dir)
+    assert store2.is_favorite("t1") is True
+    assert store2.get_rating("t1") == 4.5
+
+
+def test_user_data_store_process_update():
+    """process_heresphere_update handles isFavorite and rating."""
+    from app.services.user_data import UserDataStore
+    data_dir = tempfile.mkdtemp()
+
+    store = UserDataStore(data_dir=data_dir)
+    store.process_heresphere_update("t1", {
+        "needsMediaSource": False,
+        "isFavorite": True,
+        "rating": 3.0,
+    })
+
+    assert store.is_favorite("t1") is True
+    assert store.get_rating("t1") == 3.0
+
+
+def test_user_data_store_rating_clamped():
+    """Ratings are clamped to 0-5 range."""
+    from app.services.user_data import UserDataStore
+    data_dir = tempfile.mkdtemp()
+
+    store = UserDataStore(data_dir=data_dir)
+    store.set_rating("t1", 10.0)
+    assert store.get_rating("t1") == 5.0
+
+    store.set_rating("t1", -2.0)
+    assert store.get_rating("t1") == 0.0
+
+
+def test_user_data_store_ignores_unrelated_fields():
+    """process_heresphere_update ignores fields it doesn't handle."""
+    from app.services.user_data import UserDataStore
+    data_dir = tempfile.mkdtemp()
+
+    store = UserDataStore(data_dir=data_dir)
+    store.process_heresphere_update("t1", {
+        "needsMediaSource": True,
+        "unknownField": "ignored",
+    })
+
+    # Nothing should have been stored
+    assert store.get("t1") == {}

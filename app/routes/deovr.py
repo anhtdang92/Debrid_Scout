@@ -15,12 +15,24 @@ from flask import Blueprint, jsonify, request, current_app, url_for
 import logging
 import requests
 from app.services.real_debrid import RealDebridService, RealDebridError
+from app.services.file_helper import FileHelper
 from app.services.vr_helper import (
     is_video, guess_projection_deovr, launch_heresphere_exe,
 )
+from app.services.user_data import UserDataStore
 
 deovr_bp = Blueprint('deovr', __name__)
 logger = logging.getLogger(__name__)
+
+_user_data = None
+
+
+def _get_user_data():
+    """Return the shared UserDataStore instance."""
+    global _user_data
+    if _user_data is None:
+        _user_data = UserDataStore()
+    return _user_data
 
 
 @deovr_bp.before_request
@@ -67,10 +79,17 @@ def library_index():
         torrent_id = torrent.get('id', '')
         filename = torrent.get('filename', 'Unknown')
 
+        # Use the HereSphere thumbnail endpoint — works for DeoVR too
+        thumb_url = url_for(
+            'heresphere.thumbnail',
+            torrent_id=torrent_id,
+            _external=True,
+        )
+
         video_list.append({
-            "title": filename,
+            "title": FileHelper.simplify_filename(filename),
             "videoLength": 0,
-            "thumbnailUrl": "",
+            "thumbnailUrl": thumb_url,
             "video_url": url_for(
                 'deovr.video_detail',
                 torrent_id=torrent_id,
@@ -125,11 +144,15 @@ def video_detail(torrent_id):
     filename = torrent_data.get('filename', 'Unknown')
     screen_type, stereo_mode = guess_projection_deovr(filename)
 
+    # Thumbnail URL — reuses the HereSphere thumbnail endpoint
+    thumb_url = url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True)
+
     # If the client just needs metadata (not playing yet), return minimal info
     if not needs_media:
         return jsonify({
             "title": filename,
             "videoLength": 0,
+            "thumbnailUrl": thumb_url,
             "screenType": screen_type,
             "stereoMode": stereo_mode,
         })
@@ -179,11 +202,13 @@ def video_detail(torrent_id):
         screen_type, stereo_mode = guess_projection_deovr(largest_name)
 
     response = {
-        "title": filename,
+        "title": FileHelper.simplify_filename(filename),
         "videoLength": 0,
+        "thumbnailUrl": thumb_url,
         "screenType": screen_type,
         "stereoMode": stereo_mode,
         "is3d": stereo_mode != 'off',
+        "isFavorite": _get_user_data().is_favorite(torrent_id),
         "encodings": [{
             "name": "original",
             "videoSources": video_sources,

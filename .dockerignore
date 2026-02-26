@@ -11,3 +11,5 @@ tests/
 .pytest_cache
 .venv
 venv
+thumbnails/
+data/
