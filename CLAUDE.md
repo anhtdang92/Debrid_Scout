@@ -52,6 +52,7 @@ Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream
 | GET | `/torrent/torrents/<id>` | torrent | `get_torrent_details()` | Fetch file details for a specific torrent |
 | POST | `/torrent/launch_vlc` | torrent | `launch_vlc()` | Launch VLC.exe locally with video URL |
 | GET/POST | `/heresphere` | heresphere | `library_index()` | HereSphere library (HTML for browsers, JSON for API) |
+| POST | `/heresphere/scan` | heresphere | `scan()` | Bulk metadata for all videos (avoids N individual requests) |
 | GET/POST | `/heresphere/<id>` | heresphere | `video_detail()` | HereSphere video detail with playable sources |
 | POST | `/heresphere/launch_heresphere` | heresphere | `launch_heresphere()` | Launch HereSphere.exe locally |
 | GET/POST | `/deovr` | deovr | `library_index()` | DeoVR library listing (JSON) |

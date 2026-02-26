@@ -159,6 +159,48 @@ def _parse_rd_date(date_str):
         return None
 
 
+def _build_scan_entry(torrent, user_data):
+    """
+    Build a lightweight HereSphere scan entry from torrent list data.
+
+    Returns the minimal fields HereSphere needs to populate its search,
+    sort, and filter UI (title, dates, tags, rating, link) — without
+    playback data (media, projection, thumbnails, etc.).
+
+    The torrent dict comes from RealDebridService.get_all_torrents()
+    (id, filename, status, bytes, added, links).
+    """
+    torrent_id = torrent.get('id', '')
+    filename = torrent.get('filename', 'Unknown')
+    total_bytes = torrent.get('bytes', 0) or 0
+    date_added = (torrent.get('added') or '')[:10]
+    links_count = len(torrent.get('links') or [])
+
+    projection, stereo, fov, lens = guess_projection(filename)
+    title = FileHelper.simplify_filename(filename)
+    tags = _build_tags(
+        projection, stereo, fov, lens,
+        links_count, total_bytes, date_added,
+    )
+    detail_url = url_for(
+        'heresphere.video_detail', torrent_id=torrent_id, _external=True,
+    )
+
+    entry = {
+        "link": detail_url,
+        "title": title,
+        "dateReleased": date_added,
+        "dateAdded": date_added,
+        "duration": 0,
+        "isFavorite": user_data.is_favorite(torrent_id),
+        "tags": tags,
+    }
+    rating = user_data.get_rating(torrent_id)
+    if rating:
+        entry["rating"] = rating
+    return entry
+
+
 # ── GET/POST /heresphere — Library listing ─────────────────────
 @heresphere_bp.route('', methods=['GET', 'POST'])
 @heresphere_bp.route('/', methods=['GET', 'POST'])
@@ -247,10 +289,46 @@ def library_index():
         library.append({"name": "Real-Debrid Library", "list": []})
 
     total = len(recent) + len(this_month) + len(older)
-    response = {"access": 1, "library": library}
+    scan_url = url_for('heresphere.scan', _external=True)
+    response = {"access": 1, "library": library, "scan": scan_url}
 
     logger.info(f"HereSphere library: returning {total} videos in {len(library)} sections")
     resp = jsonify(response)
+    resp.headers['HereSphere-JSON-Version'] = '1'
+    return resp
+
+
+# ── POST /heresphere/scan — Bulk metadata for library scan ────
+@heresphere_bp.route('/scan', methods=['POST'])
+def scan():
+    """
+    Return metadata for every video in one response.
+
+    HereSphere uses this to populate tags, titles, dates, etc. for the
+    entire library without making individual requests per video.  The
+    response is an array of the same objects that video_detail returns
+    when needsMediaSource is false (i.e. metadata only, media=[]).
+    """
+    api_key = current_app.config.get('REAL_DEBRID_API_KEY')
+    if not api_key:
+        return jsonify([]), 500
+
+    try:
+        service = RealDebridService(api_key=api_key)
+        torrents = service.get_all_torrents()
+    except RealDebridError as e:
+        logger.error(f"HereSphere scan: failed to fetch torrents: {e}")
+        return jsonify([]), 500
+
+    user_data = _get_user_data()
+    scan_data = []
+    for torrent in torrents:
+        if torrent.get('status') != 'downloaded':
+            continue
+        scan_data.append(_build_scan_entry(torrent, user_data))
+
+    logger.info(f"HereSphere scan: returning metadata for {len(scan_data)} videos")
+    resp = jsonify({"scanData": scan_data})
     resp.headers['HereSphere-JSON-Version'] = '1'
     return resp
 
