@@ -98,6 +98,37 @@ Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream
 - `simplify_filename(name)` → str — replaces dots with spaces, preserves extension
 - `load_video_extensions()` / `load_category_mapping()` — JSON loaders
 
+### `ThumbnailService` (`app/services/thumbnail.py`)
+- `available` → bool (property) — True if ffmpeg is installed
+- `get_cached_path(torrent_id)` → Optional[str] — returns cached JPEG path or None
+- `generate(torrent_id, video_url, seek_seconds=10)` → Optional[str] — extract single frame via ffmpeg (640px JPEG, 30s timeout, HTTP range requests)
+- `get_cached_preview_path(torrent_id)` → Optional[str] — returns cached MP4 path or None
+- `generate_preview(torrent_id, video_url, seek_seconds=10, duration=5)` → Optional[str] — extract 5s clip via ffmpeg (320px MP4, H.264 ultrafast, muted, 60s timeout)
+- Caches to `thumbnails/` (JPEG) and `previews/` (MP4) directories at project root
+- Falls back to seek=0 if seek position is beyond video length
+
+### `UserDataStore` (`app/services/user_data.py`)
+- Thread-safe JSON-backed persistence for per-torrent user data (`data/user_data.json`)
+- `get(torrent_id)` → dict — returns stored data or defaults
+- `is_favorite(torrent_id)` → bool / `set_favorite(torrent_id, value)` — favorite flag
+- `get_rating(torrent_id)` → float / `set_rating(torrent_id, value)` — star rating (clamped 0–5)
+- `get_playback_time(torrent_id)` → float / `update_playback_time(torrent_id, time_seconds)` — resume position
+- `get_play_count(torrent_id)` → int / `increment_play_count(torrent_id)` — watch count
+- `is_watched(torrent_id)` → bool — True if play_count > 0
+- `process_heresphere_event(torrent_id, body)` — handle playback events (open/play/pause/close), increment play count on close
+- `process_heresphere_update(torrent_id, body)` — handle XBVR-style write-back (isFavorite, rating)
+- Uses `threading.Lock` for thread-safe concurrent access
+
+### `vr_helper` (`app/services/vr_helper.py`)
+- `is_video(filename)` → bool — checks against built-in `VIDEO_EXTS` set
+- `guess_projection(filename)` → tuple (projection, stereo, fov, lens) — filename-based VR format detection
+  - Projections: equirectangular, equirectangular360, fisheye, perspective
+  - Stereo modes: sbs, tb, mono
+  - Lens types: MKX200, MKX220, RF52, Linear
+- `guess_projection_deovr(filename)` → tuple (screenType, stereoMode) — DeoVR-specific mapping (dome, sphere, fisheye, flat, mkx200, rf52)
+- `find_heresphere_exe()` → Optional[str] — searches known Steam install paths + PATH
+- `launch_heresphere_exe(video_url)` → tuple (success, error_message) — launch HereSphere via subprocess
+
 ## Project Structure
 
 ```
@@ -119,7 +150,10 @@ app/
 │   ├── jackett_search.py    # JackettSearchService — Torznab search + XML parsing
 │   ├── rd_cached_link.py    # RDCachedLinkService — cache availability checking
 │   ├── rd_download_link.py  # RDDownloadLinkService — full download orchestration pipeline
-│   └── file_helper.py       # FileHelper — video extensions, file sizes, category mapping
+│   ├── file_helper.py       # FileHelper — video extensions, file sizes, category mapping
+│   ├── thumbnail.py         # ThumbnailService — ffmpeg-based thumbnail/preview generation
+│   ├── user_data.py         # UserDataStore — thread-safe JSON-backed user data persistence
+│   └── vr_helper.py         # VR utilities — projection detection, HereSphere launcher
 ├── static/
 │   ├── css/styles.css       # Main stylesheet (dark theme)
 │   ├── js/scripts.js        # Frontend JS (SSE handling, VLC/HereSphere launch, RD Manager UI)
@@ -145,7 +179,8 @@ tests/
 ├── conftest.py              # Fixtures: app, client, runner, mocked_responses
 ├── test_main.py             # Route tests (index, RD manager, about, contact, search, delete, VLC, unrestrict, torrent details)
 ├── test_search.py           # Search functionality tests (currently empty or minimal)
-└── test_services.py         # Service unit tests (RealDebridService, JackettSearchService)
+├── test_services.py         # Service unit tests (RealDebridService, JackettSearchService)
+└── test_vr_routes.py        # VR route tests — HereSphere/DeoVR endpoints, projection detection, user data, thumbnails (60+ tests)
 
 Root files:
 ├── .env.template            # Environment variable template
@@ -176,9 +211,11 @@ Root files:
 - **Infohash resolution** — three-tier: magnet URI regex → torznab XML attribute → .torrent download+parse
 - **Duplicate prevention** — fetches existing RD torrents, builds hash→ID lookup to reuse instead of re-adding magnets
 - **Stale cache cleanup** — auto-deletes newly-added torrents that fail to reach "downloaded" status (dead statuses: error, magnet_error, virus, dead)
-- **VR projection detection** — filename-based pattern matching for projection type (equirectangular, fisheye, perspective) and stereo mode (SBS, TB, mono), with FOV and lens detection (MKX200, MKX220, RF52)
-- **HereSphere native API** — structured tags, time-based library sections (Recent/This Month/Older), `HereSphere-JSON-Version: 1` header
-- **DeoVR API** — simplified format with `screenType`/`stereoMode` fields, `encodings` array
+- **VR projection detection** — filename-based pattern matching for projection type (equirectangular, fisheye, perspective) and stereo mode (SBS, TB, mono), with FOV and lens detection (MKX200, MKX220, RF52); consolidated in `vr_helper.py` with separate HereSphere and DeoVR mappings
+- **HereSphere native API** — structured XBVR-style tags, time-based library sections (Favorites/Recent/This Month/Older), `HereSphere-JSON-Version: 1` header, write-back support for favorites and ratings, playback event tracking with resume position (milliseconds), bulk `/scan` endpoint
+- **DeoVR API** — simplified format with `screenType`/`stereoMode` fields, `encodings` array, write-back support for favorites/ratings, playback event tracking with resume position (seconds), `playerState` event handling (0=play, 1=pause, 2=close)
+- **User data persistence** — thread-safe `UserDataStore` backed by `data/user_data.json`; tracks favorites, ratings (0–5), playback time, play count, and watched status per torrent; implements XBVR write-back pattern
+- **Thumbnail/preview generation** — `ThumbnailService` uses ffmpeg to extract frames (640px JPEG) and 5-second preview clips (320px MP4) from remote video URLs via HTTP range requests; cached to `thumbnails/` and `previews/` directories; gracefully degrades when ffmpeg is unavailable
 - **SSE streaming** — search results streamed via `text/event-stream` with cancellation support (threading.Event)
 - **Rotating logs** — `logs/app.log`, 10KB max, 10 backup files
 - **Docker support** — `Dockerfile` with gunicorn, `.dockerignore` for clean builds
