@@ -402,8 +402,9 @@ def video_detail(torrent_id):
     tags = _build_tags(projection, stereo, fov, lens,
                        len(video_files), total_bytes, date_added)
 
-    # Thumbnail URL — points to our /heresphere/thumb/<id> endpoint
+    # Thumbnail / preview URLs
     thumb_url = url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True)
+    preview_url = url_for('heresphere.preview', torrent_id=torrent_id, _external=True)
 
     # Load persisted user data (favorites, ratings)
     user_data = _get_user_data()
@@ -414,7 +415,7 @@ def video_detail(torrent_id):
         "title": title,
         "description": description,
         "thumbnailImage": thumb_url,
-        "thumbnailVideo": "",
+        "thumbnailVideo": preview_url,
         "dateReleased": date_added,
         "dateAdded": date_added,
         "duration": 0,
@@ -487,6 +488,52 @@ def video_detail(torrent_id):
     return resp
 
 
+def _get_direct_video_url(torrent_id):
+    """Fetch torrent info, find the largest video file, and unrestrict its link.
+
+    Returns the direct URL string, or None on any failure.
+    Shared by the thumbnail and preview endpoints.
+    """
+    api_key = current_app.config.get('REAL_DEBRID_API_KEY')
+    if not api_key:
+        return None
+
+    try:
+        headers = {'Authorization': f'Bearer {api_key}'}
+        resp = requests.get(
+            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
+            headers=headers,
+        )
+        resp.raise_for_status()
+        torrent_data = resp.json()
+    except requests.exceptions.RequestException:
+        return None
+
+    files = torrent_data.get('files') or []
+    links = torrent_data.get('links') or []
+    selected = [f for f in files if f.get('selected') == 1]
+
+    # Find the largest video file and its corresponding link
+    video_link = None
+    sorted_files = sorted(selected, key=lambda f: f.get('bytes', 0), reverse=True)
+    for i, f in enumerate(sorted_files):
+        fname = f.get('path', '').split('/')[-1]
+        if is_video(fname) and i < len(links):
+            idx = selected.index(f)
+            if idx < len(links):
+                video_link = links[idx]
+                break
+
+    if not video_link:
+        return None
+
+    try:
+        service = RealDebridService(api_key=api_key)
+        return service.unrestrict_link(video_link)
+    except RealDebridError:
+        return None
+
+
 # ── GET /heresphere/thumb/<torrent_id> — Thumbnail server ─────
 @heresphere_bp.route('/thumb/<torrent_id>', methods=['GET'])
 def thumbnail(torrent_id):
@@ -499,63 +546,51 @@ def thumbnail(torrent_id):
     """
     svc = _get_thumb_service()
 
-    # 1. Check disk cache first (instant)
     cached = svc.get_cached_path(torrent_id)
     if cached:
         return send_file(cached, mimetype='image/jpeg')
 
-    # 2. ffmpeg not available — return 404 gracefully
     if not svc.available:
         logger.debug("ffmpeg not available — skipping thumbnail generation")
         return '', 404
 
-    # 3. Generate thumbnail: fetch torrent info → unrestrict → ffmpeg
-    api_key = current_app.config.get('REAL_DEBRID_API_KEY')
-    if not api_key:
+    direct_url = _get_direct_video_url(torrent_id)
+    if not direct_url:
         return '', 404
 
-    try:
-        headers = {'Authorization': f'Bearer {api_key}'}
-        resp = requests.get(
-            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
-            headers=headers,
-        )
-        resp.raise_for_status()
-        torrent_data = resp.json()
-    except requests.exceptions.RequestException:
-        return '', 404
-
-    files = torrent_data.get('files') or []
-    links = torrent_data.get('links') or []
-    selected = [f for f in files if f.get('selected') == 1]
-
-    # Find the largest video file and its corresponding link
-    video_link = None
-    sorted_files = sorted(selected, key=lambda f: f.get('bytes', 0), reverse=True)
-    for i, f in enumerate(sorted_files):
-        fname = f.get('path', '').split('/')[-1]
-        if is_video(fname) and i < len(links):
-            # The link at the same index in links[] corresponds to this
-            # selected file (RD maintains the order)
-            idx = selected.index(f)
-            if idx < len(links):
-                video_link = links[idx]
-                break
-
-    if not video_link:
-        return '', 404
-
-    # Unrestrict to get a direct URL that ffmpeg can read
-    try:
-        service = RealDebridService(api_key=api_key)
-        direct_url = service.unrestrict_link(video_link)
-    except RealDebridError:
-        return '', 404
-
-    # Run ffmpeg (seeks to 10s, grabs one frame, ~2-5s)
     path = svc.generate(torrent_id, direct_url)
     if path:
         return send_file(path, mimetype='image/jpeg')
+
+    return '', 404
+
+
+# ── GET /heresphere/preview/<torrent_id> — Animated preview ───
+@heresphere_bp.route('/preview/<torrent_id>', methods=['GET'])
+def preview(torrent_id):
+    """
+    Serve a short (~5 s) muted MP4 preview clip for a torrent.
+
+    HereSphere displays this as an animated thumbnail on hover in the
+    library grid.  Generated via ffmpeg and cached to disk.
+    """
+    svc = _get_thumb_service()
+
+    cached = svc.get_cached_preview_path(torrent_id)
+    if cached:
+        return send_file(cached, mimetype='video/mp4')
+
+    if not svc.available:
+        logger.debug("ffmpeg not available — skipping preview generation")
+        return '', 404
+
+    direct_url = _get_direct_video_url(torrent_id)
+    if not direct_url:
+        return '', 404
+
+    path = svc.generate_preview(torrent_id, direct_url)
+    if path:
+        return send_file(path, mimetype='video/mp4')
 
     return '', 404
 

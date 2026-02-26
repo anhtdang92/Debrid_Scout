@@ -22,12 +22,21 @@ _DEFAULT_CACHE_DIR = os.path.join(
 )
 
 
-class ThumbnailService:
-    """Generate and cache video thumbnails via ffmpeg."""
+_DEFAULT_PREVIEW_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    'previews',
+)
 
-    def __init__(self, cache_dir: Optional[str] = None):
+
+class ThumbnailService:
+    """Generate and cache video thumbnails and preview clips via ffmpeg."""
+
+    def __init__(self, cache_dir: Optional[str] = None,
+                 preview_dir: Optional[str] = None):
         self.cache_dir = cache_dir or _DEFAULT_CACHE_DIR
+        self.preview_dir = preview_dir or _DEFAULT_PREVIEW_DIR
         os.makedirs(self.cache_dir, exist_ok=True)
+        os.makedirs(self.preview_dir, exist_ok=True)
         self._ffmpeg = shutil.which('ffmpeg')
 
     @property
@@ -98,4 +107,84 @@ class ThumbnailService:
             return None
         except Exception as e:
             logger.error(f"Thumbnail generation error for {torrent_id}: {e}")
+            return None
+
+    # ── Preview clip generation ───────────────────────────────
+
+    def get_cached_preview_path(self, torrent_id: str) -> Optional[str]:
+        """Return the cached preview clip path if it exists, else None."""
+        path = os.path.join(self.preview_dir, f"{torrent_id}.mp4")
+        return path if os.path.isfile(path) else None
+
+    def generate_preview(self, torrent_id: str, video_url: str,
+                         seek_seconds: int = 10,
+                         duration: int = 5) -> Optional[str]:
+        """
+        Extract a short preview clip from a remote video URL using ffmpeg.
+
+        Generates a small, muted MP4 clip (320px wide, 5s, ~200-500 KB)
+        that HereSphere displays as an animated thumbnail on hover.
+
+        Returns the path to the cached file, or None on failure.
+        """
+        if not self._ffmpeg:
+            logger.warning("ffmpeg not found — cannot generate preview")
+            return None
+
+        cached = self.get_cached_preview_path(torrent_id)
+        if cached:
+            return cached
+
+        output_path = os.path.join(self.preview_dir, f"{torrent_id}.mp4")
+
+        try:
+            result = subprocess.run(
+                [
+                    self._ffmpeg,
+                    '-ss', str(seek_seconds),      # seek before open (fast)
+                    '-i', video_url,
+                    '-t', str(duration),            # clip length
+                    '-vf', 'scale=320:-2',          # 320px wide, even height
+                    '-an',                          # strip audio
+                    '-c:v', 'libx264',
+                    '-preset', 'ultrafast',
+                    '-crf', '30',                   # small file, decent quality
+                    '-movflags', '+faststart',      # web-friendly: moov atom first
+                    '-y',
+                    output_path,
+                ],
+                capture_output=True,
+                timeout=60,
+            )
+
+            if result.returncode == 0 and os.path.isfile(output_path):
+                size = os.path.getsize(output_path)
+                logger.info(
+                    f"Preview generated for {torrent_id}: {size} bytes"
+                )
+                return output_path
+
+            stderr = result.stderr.decode(errors='replace')[:300]
+            logger.warning(
+                f"ffmpeg preview failed for {torrent_id} "
+                f"(rc={result.returncode}): {stderr}"
+            )
+
+            if seek_seconds > 0:
+                return self.generate_preview(
+                    torrent_id, video_url,
+                    seek_seconds=0, duration=duration,
+                )
+
+            return None
+
+        except subprocess.TimeoutExpired:
+            logger.warning(f"ffmpeg preview timed out for {torrent_id}")
+            if os.path.isfile(output_path):
+                os.remove(output_path)
+            return None
+        except Exception as e:
+            logger.error(
+                f"Preview generation error for {torrent_id}: {e}"
+            )
             return None

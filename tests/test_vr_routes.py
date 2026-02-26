@@ -327,6 +327,93 @@ def test_heresphere_thumb_no_ffmpeg(client, mocked_responses):
         assert response.status_code == 404
 
 
+# ── Preview clip endpoint tests ───────────────────────────────
+
+def test_heresphere_preview_cached(client, mocked_responses):
+    """GET /heresphere/preview/<id> serves a cached preview clip."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.heresphere._get_thumb_service') as mock_svc:
+        svc = MagicMock()
+        mock_svc.return_value = svc
+
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
+            f.write(b'\x00\x00\x00\x1cftypisom' + b'\x00' * 100)  # Fake MP4
+            tmp_path = f.name
+
+        try:
+            svc.get_cached_preview_path.return_value = tmp_path
+            response = client.get("/heresphere/preview/torrent1")
+            assert response.status_code == 200
+            assert response.content_type == 'video/mp4'
+        finally:
+            os.unlink(tmp_path)
+
+
+def test_heresphere_preview_no_ffmpeg(client, mocked_responses):
+    """GET /heresphere/preview/<id> returns 404 when ffmpeg is unavailable."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.heresphere._get_thumb_service') as mock_svc:
+        svc = MagicMock()
+        mock_svc.return_value = svc
+        svc.get_cached_preview_path.return_value = None
+        svc.available = False
+
+        response = client.get("/heresphere/preview/torrent1")
+        assert response.status_code == 404
+
+
+def test_heresphere_video_detail_includes_preview_url(client, mocked_responses):
+    """Video detail response includes thumbnailVideo pointing to preview endpoint."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    response = client.post(
+        "/heresphere/torrent1",
+        json={"needsMediaSource": False},
+        content_type="application/json",
+    )
+    data = response.json
+    assert "thumbnailVideo" in data
+    assert "/heresphere/preview/torrent1" in data["thumbnailVideo"]
+
+
+# ── Preview service unit tests ────────────────────────────────
+
+def test_preview_service_no_ffmpeg():
+    """generate_preview returns None when ffmpeg is missing."""
+    from app.services.thumbnail import ThumbnailService
+    with patch('shutil.which', return_value=None):
+        svc = ThumbnailService(cache_dir=tempfile.mkdtemp(),
+                               preview_dir=tempfile.mkdtemp())
+    assert svc.generate_preview("test", "http://example.com/v.mp4") is None
+
+
+def test_preview_service_cache_hit():
+    """generate_preview returns cached path without running ffmpeg."""
+    from app.services.thumbnail import ThumbnailService
+    preview_dir = tempfile.mkdtemp()
+    cached_file = os.path.join(preview_dir, "cached_id.mp4")
+    with open(cached_file, 'wb') as f:
+        f.write(b'\x00' * 100)
+
+    with patch('shutil.which', return_value="/usr/bin/ffmpeg"):
+        svc = ThumbnailService(cache_dir=tempfile.mkdtemp(),
+                               preview_dir=preview_dir)
+    assert svc.get_cached_preview_path("cached_id") == cached_file
+    assert svc.generate_preview("cached_id", "http://example.com/v.mp4") == cached_file
+
+
 # ── DeoVR tests ───────────────────────────────────────────────
 
 def test_deovr_library(client, mocked_responses):
