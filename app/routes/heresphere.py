@@ -22,7 +22,7 @@ from flask import (
     render_template, send_file,
 )
 import logging
-import requests
+import time
 from datetime import datetime, timedelta, timezone
 from app.services.real_debrid import RealDebridService, RealDebridError
 from app.services.file_helper import FileHelper
@@ -54,6 +54,22 @@ def _get_user_data():
     if _user_data is None:
         _user_data = UserDataStore()
     return _user_data
+
+
+# ── Torrent info cache (TTL = 5 minutes) ────────────────────
+_torrent_cache = {}
+_TORRENT_CACHE_TTL = 300
+
+
+def _get_torrent_info_cached(service, torrent_id):
+    """Fetch torrent info via RealDebridService with a short TTL cache."""
+    now = time.time()
+    cached = _torrent_cache.get(torrent_id)
+    if cached and (now - cached['ts']) < _TORRENT_CACHE_TTL:
+        return cached['data']
+    data = service.get_torrent_info(torrent_id)
+    _torrent_cache[torrent_id] = {'data': data, 'ts': now}
+    return data
 
 
 @heresphere_bp.before_request
@@ -375,16 +391,11 @@ def video_detail(torrent_id):
         # Persist any favorite/rating changes
         _get_user_data().process_heresphere_update(torrent_id, body)
 
-    headers = {'Authorization': f'Bearer {api_key}'}
+    service = RealDebridService(api_key=api_key)
 
     try:
-        resp = requests.get(
-            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
-            headers=headers
-        )
-        resp.raise_for_status()
-        torrent_data = resp.json()
-    except requests.exceptions.RequestException as e:
+        torrent_data = _get_torrent_info_cached(service, torrent_id)
+    except RealDebridError as e:
         logger.error(f"HereSphere: failed to fetch torrent {torrent_id}: {e}")
         return jsonify({"status": "error", "error": "Failed to fetch torrent info"}), 500
 
@@ -468,19 +479,25 @@ def video_detail(torrent_id):
         return resp
 
     # ── Full response with playable sources ───────────────────
-    service = RealDebridService(api_key=api_key)
-    unrestricted_links = []
-    for link in links:
-        try:
-            unrestricted_links.append(service.unrestrict_link(link))
-        except RealDebridError:
-            unrestricted_links.append(link)
-
-    link_map = {}
-    for f, link in zip(selected_files, unrestricted_links):
+    # Build file-ID → restricted-link mapping using positional correspondence
+    # (RD returns links[] in the same order as selected files)
+    restricted_map = {}
+    for i, f in enumerate(selected_files):
         fid = f.get('id')
-        if fid is not None and link:
-            link_map[fid] = link
+        if fid is not None and i < len(links):
+            restricted_map[fid] = links[i]
+
+    # Only unrestrict links for video files (skip non-video to avoid
+    # wasting API calls and 0.2s rate-limit delays per link)
+    video_file_ids = {f.get('id') for f in video_files}
+    link_map = {}
+    for fid, restricted_link in restricted_map.items():
+        if fid not in video_file_ids:
+            continue
+        try:
+            link_map[fid] = service.unrestrict_link(restricted_link)
+        except RealDebridError:
+            link_map[fid] = restricted_link
 
     # Build one media entry per video file (XBVR style: "File 1/N - size")
     media_entries = []
@@ -524,39 +541,34 @@ def _get_direct_video_url(torrent_id):
         return None
 
     try:
-        headers = {'Authorization': f'Bearer {api_key}'}
-        resp = requests.get(
-            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
-            headers=headers,
-        )
-        resp.raise_for_status()
-        torrent_data = resp.json()
-    except requests.exceptions.RequestException:
+        service = RealDebridService(api_key=api_key)
+        torrent_data = _get_torrent_info_cached(service, torrent_id)
+    except RealDebridError:
         return None
 
     files = torrent_data.get('files') or []
     links = torrent_data.get('links') or []
     selected = [f for f in files if f.get('selected') == 1]
 
-    # Find the largest video file and its corresponding link
-    video_link = None
+    # Build file-ID → restricted-link mapping by position
+    restricted_map = {}
+    for i, f in enumerate(selected):
+        fid = f.get('id')
+        if fid is not None and i < len(links):
+            restricted_map[fid] = links[i]
+
+    # Find the largest video file that has a link
     sorted_files = sorted(selected, key=lambda f: f.get('bytes', 0), reverse=True)
-    for i, f in enumerate(sorted_files):
+    for f in sorted_files:
         fname = f.get('path', '').split('/')[-1]
-        if is_video(fname) and i < len(links):
-            idx = selected.index(f)
-            if idx < len(links):
-                video_link = links[idx]
-                break
+        fid = f.get('id')
+        if is_video(fname) and fid in restricted_map:
+            try:
+                return service.unrestrict_link(restricted_map[fid])
+            except RealDebridError:
+                return None
 
-    if not video_link:
-        return None
-
-    try:
-        service = RealDebridService(api_key=api_key)
-        return service.unrestrict_link(video_link)
-    except RealDebridError:
-        return None
+    return None
 
 
 # ── GET /heresphere/thumb/<torrent_id> — Thumbnail server ─────

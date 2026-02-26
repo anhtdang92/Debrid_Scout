@@ -15,13 +15,13 @@ Usage:
 
 from flask import Blueprint, jsonify, request, current_app, url_for
 import logging
-import requests
 from app.services.real_debrid import RealDebridService, RealDebridError
 from app.services.file_helper import FileHelper
 from app.services.vr_helper import (
     is_video, guess_projection_deovr, launch_heresphere_exe,
 )
 from app.services.user_data import UserDataStore
+from app.routes.heresphere import _get_torrent_info_cached
 
 deovr_bp = Blueprint('deovr', __name__)
 logger = logging.getLogger(__name__)
@@ -135,17 +135,11 @@ def video_detail(torrent_id):
         needs_media = body.get('needsMediaSource', True)
         _get_user_data().process_heresphere_update(torrent_id, body)
 
-    headers = {'Authorization': f'Bearer {api_key}'}
+    service = RealDebridService(api_key=api_key)
 
     try:
-        # Fetch torrent info from RD
-        resp = requests.get(
-            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
-            headers=headers
-        )
-        resp.raise_for_status()
-        torrent_data = resp.json()
-    except requests.exceptions.RequestException as e:
+        torrent_data = _get_torrent_info_cached(service, torrent_id)
+    except RealDebridError as e:
         logger.error(f"DeoVR: failed to fetch torrent {torrent_id}: {e}")
         return jsonify({"status": "error", "error": "Failed to fetch torrent info"}), 500
 
@@ -174,34 +168,36 @@ def video_detail(torrent_id):
     links = torrent_data.get('links', [])
     selected_files = [f for f in files if f.get('selected') == 1]
 
-    # Unrestrict all links
-    service = RealDebridService(api_key=api_key)
-    unrestricted_links = []
-    for link in links:
-        try:
-            unrestricted_links.append(service.unrestrict_link(link))
-        except RealDebridError:
-            unrestricted_links.append(link)
-
-    # Map file IDs to unrestricted links
-    link_map = {f['id']: link for f, link in zip(selected_files, unrestricted_links)}
+    # Build file-ID → restricted-link mapping by position
+    restricted_map = {}
+    for i, f in enumerate(selected_files):
+        fid = f.get('id')
+        if fid is not None and i < len(links):
+            restricted_map[fid] = links[i]
 
     # Sort by size descending, filter to video files only
     sorted_files = sorted(selected_files, key=lambda f: f.get('bytes', 0), reverse=True)
 
+    # Only unrestrict video file links (skip non-video)
     video_sources = []
     for f in sorted_files:
         fname = f.get('path', '').split('/')[-1]
         if not is_video(fname):
             continue
 
-        link = link_map.get(f.get('id'))
-        if not link:
+        fid = f.get('id')
+        restricted_link = restricted_map.get(fid)
+        if not restricted_link:
             continue
 
+        try:
+            url = service.unrestrict_link(restricted_link)
+        except RealDebridError:
+            url = restricted_link
+
         video_sources.append({
-            "resolution": 0,  # Unknown; DeoVR handles this
-            "url": link,
+            "resolution": 0,
+            "url": url,
         })
 
     if not video_sources:

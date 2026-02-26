@@ -54,7 +54,7 @@ Preview clips are generated and served at `/heresphere/preview/<id>`, but the br
 
 ---
 
-### 5. Pagination or Virtual Scrolling
+### 5. Pagination or Virtual Scrolling ✅
 **Priority: Low | Effort: Medium**
 
 All cards render at once. With 100+ torrents this will become sluggish.
@@ -67,7 +67,7 @@ All cards render at once. With 100+ torrents this will become sluggish.
 
 ## API Integration
 
-### 6. Use `RealDebridService` Instead of Raw Requests
+### 6. Use `RealDebridService` Instead of Raw Requests ✅
 **Priority: High | Effort: Low**
 
 `video_detail()` (lines 371-381) makes a direct `requests.get()` to the RD API instead of using `RealDebridService.get_torrent_info()`. This bypasses rate limiting and error handling.
@@ -78,7 +78,7 @@ All cards render at once. With 100+ torrents this will become sluggish.
 
 ---
 
-### 7. Cache Torrent Info
+### 7. Cache Torrent Info ✅
 **Priority: Medium | Effort: Medium**
 
 Every `video_detail` POST hits the RD API. Since torrent metadata rarely changes, a short TTL cache would cut latency significantly during rapid HereSphere browsing.
@@ -89,7 +89,7 @@ Every `video_detail` POST hits the RD API. Since torrent metadata rarely changes
 
 ---
 
-### 8. Optimize Link Unrestriction
+### 8. Optimize Link Unrestriction ✅
 **Priority: Medium | Effort: Medium**
 
 `video_detail()` unrestricts every link serially with a 0.2s rate-limit delay. For a torrent with 10 links, that's 2+ seconds of blocking.
@@ -100,7 +100,7 @@ Every `video_detail` POST hits the RD API. Since torrent metadata rarely changes
 
 ---
 
-### 9. Fix File-Link Mapping
+### 9. Fix File-Link Mapping ✅
 **Priority: High | Effort: Low**
 
 Line 472 uses `zip(selected_files, unrestricted_links)`, which assumes 1:1 positional correspondence. If RD returns fewer links than selected files, the mapping shifts.

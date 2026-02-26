@@ -1039,32 +1039,89 @@ document.addEventListener("DOMContentLoaded", function () {
     if (saved) sortSelect.value = saved;
   }
 
-  function updateVisibleCount() {
-    var countEl = document.getElementById("hs-count");
-    var noMatch = document.getElementById("hs-no-match");
-    var cards = grid.querySelectorAll(".hs-card");
-    var visible = 0;
-    cards.forEach(function (card) {
-      if (card.style.display !== "none") visible++;
+  // ── Pagination state ──────────────────────────────────────
+  var HS_PAGE_SIZE = 24;
+  var currentPage = 1;
+  var countEl = document.getElementById("hs-count");
+  var noMatch = document.getElementById("hs-no-match");
+  var paginationEl = document.getElementById("hs-pagination");
+
+  function getFilteredCards() {
+    var term = searchInput ? searchInput.value.toLowerCase().trim() : "";
+    var all = Array.prototype.slice.call(grid.querySelectorAll(".hs-card"));
+    if (!term) return all;
+    return all.filter(function (card) {
+      var title = (card.querySelector(".hs-card-title") || {}).textContent || "";
+      return title.toLowerCase().indexOf(term) !== -1;
     });
+  }
+
+  function applyPagination() {
+    var filtered = getFilteredCards();
+    var totalPages = Math.max(1, Math.ceil(filtered.length / HS_PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    var start = (currentPage - 1) * HS_PAGE_SIZE;
+    var end = start + HS_PAGE_SIZE;
+
+    // Build a set of IDs for the current page
+    var pageSet = {};
+    for (var i = start; i < end && i < filtered.length; i++) {
+      pageSet[filtered[i].getAttribute("data-id")] = true;
+    }
+
+    // Show only cards on the current page
+    grid.querySelectorAll(".hs-card").forEach(function (card) {
+      card.style.display = pageSet[card.getAttribute("data-id")] ? "" : "none";
+    });
+
     if (countEl) {
-      countEl.textContent = visible + " video" + (visible !== 1 ? "s" : "");
+      countEl.textContent = filtered.length + " video" + (filtered.length !== 1 ? "s" : "");
     }
     if (noMatch) {
       var term = searchInput ? searchInput.value.trim() : "";
-      noMatch.style.display = (visible === 0 && term) ? "block" : "none";
+      noMatch.style.display = (filtered.length === 0 && term) ? "block" : "none";
     }
+
+    renderPagination(totalPages);
+  }
+
+  function renderPagination(totalPages) {
+    if (!paginationEl) return;
+    paginationEl.innerHTML = "";
+    if (totalPages <= 1) return;
+
+    function btn(label, page, active, disabled) {
+      var b = document.createElement("button");
+      b.className = "hs-page-btn" + (active ? " active" : "");
+      b.textContent = label;
+      b.disabled = disabled;
+      if (!disabled && !active) {
+        b.addEventListener("click", function () {
+          currentPage = page;
+          applyPagination();
+          grid.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+      return b;
+    }
+
+    paginationEl.appendChild(btn("\u00AB", 1, false, currentPage === 1));
+    paginationEl.appendChild(btn("\u2039", currentPage - 1, false, currentPage === 1));
+
+    var lo = Math.max(1, currentPage - 3);
+    var hi = Math.min(totalPages, lo + 6);
+    lo = Math.max(1, hi - 6);
+    for (var p = lo; p <= hi; p++) {
+      paginationEl.appendChild(btn(String(p), p, p === currentPage, false));
+    }
+
+    paginationEl.appendChild(btn("\u203A", currentPage + 1, false, currentPage === totalPages));
+    paginationEl.appendChild(btn("\u00BB", totalPages, false, currentPage === totalPages));
   }
 
   function applyFilter() {
-    var term = searchInput ? searchInput.value.toLowerCase().trim() : "";
-    var cards = grid.querySelectorAll(".hs-card");
-    cards.forEach(function (card) {
-      var title = (card.querySelector(".hs-card-title") || {}).textContent || "";
-      var match = !term || title.toLowerCase().indexOf(term) !== -1;
-      card.style.display = match ? "" : "none";
-    });
-    updateVisibleCount();
+    currentPage = 1;
+    applyPagination();
   }
 
   function applySort() {
@@ -1085,24 +1142,22 @@ document.addEventListener("DOMContentLoaded", function () {
         bVal = parseFloat(b.getAttribute("data-size")) || 0;
         return dir === "asc" ? aVal - bVal : bVal - aVal;
       } else {
-        // date
         aVal = a.getAttribute("data-date") || "";
         bVal = b.getAttribute("data-date") || "";
         return dir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
     });
 
-    // Re-append in sorted order (preserves filter visibility)
     cards.forEach(function (card) { grid.appendChild(card); });
-
     if (sortSelect) localStorage.setItem(HS_SORT_KEY, value);
+    applyPagination();
   }
 
   // Bind events
   if (searchInput) searchInput.addEventListener("input", applyFilter);
   if (sortSelect) sortSelect.addEventListener("change", applySort);
 
-  // Apply initial sort on page load
+  // Apply initial sort (triggers pagination)
   applySort();
 
   // ── Hover-to-preview: shared <video> element ──────────────
