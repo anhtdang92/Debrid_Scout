@@ -56,6 +56,7 @@ Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream
 | GET/POST | `/heresphere/<id>` | heresphere | `video_detail()` | HereSphere video detail with playable sources |
 | GET | `/heresphere/thumb/<id>` | heresphere | `thumbnail()` | Serve cached video thumbnail (JPEG) |
 | GET | `/heresphere/preview/<id>` | heresphere | `preview()` | Serve cached animated preview clip (MP4) |
+| POST | `/heresphere/event/<id>` | heresphere | `event()` | Receive playback events (play/pause/close + position) |
 | POST | `/heresphere/launch_heresphere` | heresphere | `launch_heresphere()` | Launch HereSphere.exe locally |
 | GET/POST | `/deovr` | deovr | `library_index()` | DeoVR library listing (JSON) |
 | GET/POST | `/deovr/<id>` | deovr | `video_detail()` | DeoVR video detail with playable sources |

@@ -182,6 +182,11 @@ def _build_scan_entry(torrent, user_data):
         projection, stereo, fov, lens,
         links_count, total_bytes, date_added,
     )
+    if user_data.is_watched(torrent_id):
+        tags.append({"name": "Feature:Watched"})
+    else:
+        tags.append({"name": "Feature:Unwatched"})
+
     detail_url = url_for(
         'heresphere.video_detail', torrent_id=torrent_id, _external=True,
     )
@@ -402,12 +407,19 @@ def video_detail(torrent_id):
     tags = _build_tags(projection, stereo, fov, lens,
                        len(video_files), total_bytes, date_added)
 
-    # Thumbnail / preview URLs
+    # Thumbnail / preview / event URLs
     thumb_url = url_for('heresphere.thumbnail', torrent_id=torrent_id, _external=True)
     preview_url = url_for('heresphere.preview', torrent_id=torrent_id, _external=True)
+    event_url = url_for('heresphere.event', torrent_id=torrent_id, _external=True)
 
-    # Load persisted user data (favorites, ratings)
+    # Load persisted user data (favorites, ratings, playback)
     user_data = _get_user_data()
+
+    # Add Watched/Unwatched tag
+    if user_data.is_watched(torrent_id):
+        tags.append({"name": "Feature:Watched"})
+    else:
+        tags.append({"name": "Feature:Unwatched"})
 
     # ── Build base response with ALL HereSphere fields ────────
     base_response = {
@@ -425,6 +437,7 @@ def video_detail(torrent_id):
         "stereo": stereo,
         "fov": fov,
         "lens": lens,
+        "eventServer": event_url,
         "tags": tags,
         "subtitles": [],
         "scripts": [],
@@ -593,6 +606,26 @@ def preview(torrent_id):
         return send_file(path, mimetype='video/mp4')
 
     return '', 404
+
+
+# ── POST /heresphere/event/<torrent_id> — Playback event server ─
+@heresphere_bp.route('/event/<torrent_id>', methods=['POST'])
+def event(torrent_id):
+    """
+    Receive playback events from HereSphere.
+
+    HereSphere sends JSON with playerState (0=play, 1=pause, 2=close),
+    currentTime (seconds), and playbackSpeed.  We persist the position
+    for resume and increment the play count on close.
+    """
+    if not request.is_json:
+        return '', 204
+
+    body = request.json or {}
+    logger.debug(f"HereSphere event for {torrent_id}: {body}")
+
+    _get_user_data().process_heresphere_event(torrent_id, body)
+    return '', 204
 
 
 # ── POST /heresphere/launch_heresphere — PC app launcher ──────

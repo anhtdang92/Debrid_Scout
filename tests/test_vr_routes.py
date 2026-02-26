@@ -671,3 +671,131 @@ def test_user_data_store_ignores_unrelated_fields():
 
     # Nothing should have been stored
     assert store.get("t1") == {}
+
+
+# ── Playback event tests ─────────────────────────────────────
+
+def test_user_data_store_playback_tracking():
+    """UserDataStore tracks playback time, play count, and watched status."""
+    from app.services.user_data import UserDataStore
+    data_dir = tempfile.mkdtemp()
+    store = UserDataStore(data_dir=data_dir)
+
+    # Defaults
+    assert store.get_playback_time("t1") == 0.0
+    assert store.get_play_count("t1") == 0
+    assert store.is_watched("t1") is False
+
+    # Update playback time
+    store.update_playback_time("t1", 123.5)
+    assert store.get_playback_time("t1") == 123.5
+
+    # Increment play count
+    store.increment_play_count("t1")
+    assert store.get_play_count("t1") == 1
+    assert store.is_watched("t1") is True
+
+    store.increment_play_count("t1")
+    assert store.get_play_count("t1") == 2
+
+    # Verify persistence
+    store2 = UserDataStore(data_dir=data_dir)
+    assert store2.get_playback_time("t1") == 123.5
+    assert store2.get_play_count("t1") == 2
+    assert store2.is_watched("t1") is True
+
+
+def test_user_data_store_process_event():
+    """process_heresphere_event updates position and counts closes."""
+    from app.services.user_data import UserDataStore
+    data_dir = tempfile.mkdtemp()
+    store = UserDataStore(data_dir=data_dir)
+
+    # Open event (event=0) with position
+    store.process_heresphere_event("t1", {
+        "event": 0, "time": 0.0, "speed": 1.0,
+    })
+    assert store.get_playback_time("t1") == 0.0
+    assert store.get_play_count("t1") == 0
+
+    # Play event (event=1) with position
+    store.process_heresphere_event("t1", {
+        "event": 1, "time": 30.0, "speed": 1.0,
+    })
+    assert store.get_playback_time("t1") == 30.0
+    assert store.get_play_count("t1") == 0
+
+    # Pause event (event=2)
+    store.process_heresphere_event("t1", {
+        "event": 2, "time": 60.0,
+    })
+    assert store.get_playback_time("t1") == 60.0
+    assert store.get_play_count("t1") == 0  # Not closed yet
+
+    # Close event (event=3)
+    store.process_heresphere_event("t1", {
+        "event": 3, "time": 90.0,
+    })
+    assert store.get_playback_time("t1") == 90.0
+    assert store.get_play_count("t1") == 1
+    assert store.is_watched("t1") is True
+
+
+def test_heresphere_event_endpoint(client, mocked_responses):
+    """POST /heresphere/event/<id> accepts events and returns 204."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.routes.heresphere._get_user_data') as mock_ud:
+        store = MagicMock()
+        mock_ud.return_value = store
+        response = client.post(
+            "/heresphere/event/torrent1",
+            json={"event": 1, "time": 42.0, "speed": 1.0},
+            content_type="application/json",
+        )
+    assert response.status_code == 204
+    store.process_heresphere_event.assert_called_once_with(
+        "torrent1", {"event": 1, "time": 42.0, "speed": 1.0},
+    )
+
+
+def test_heresphere_video_detail_has_event_server(client, mocked_responses):
+    """Video detail includes eventServer URL."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    response = client.post(
+        "/heresphere/torrent1",
+        json={"needsMediaSource": False},
+        content_type="application/json",
+    )
+    data = response.json
+    assert "eventServer" in data
+    assert "/heresphere/event/torrent1" in data["eventServer"]
+
+
+def test_heresphere_video_detail_unwatched_tag(client, mocked_responses):
+    """Video detail includes Feature:Unwatched tag by default."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/torrent1",
+        json=MOCK_TORRENT_INFO, status=200,
+    )
+    response = client.post(
+        "/heresphere/torrent1",
+        json={"needsMediaSource": False},
+        content_type="application/json",
+    )
+    data = response.json
+    tag_names = [t["name"] for t in data["tags"]]
+    assert "Feature:Unwatched" in tag_names
