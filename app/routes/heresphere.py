@@ -257,7 +257,8 @@ def library_index():
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
 
-    recent, this_month, older = [], [], []
+    user_data = _get_user_data()
+    favorites, recent, this_month, older = [], [], [], []
 
     for torrent in torrents:
         if torrent.get('status') != 'downloaded':
@@ -270,6 +271,9 @@ def library_index():
             _external=True
         )
 
+        if user_data.is_favorite(torrent_id):
+            favorites.append(detail_url)
+
         added = _parse_rd_date(torrent.get('added'))
         if added and added >= week_ago:
             recent.append(detail_url)
@@ -279,6 +283,8 @@ def library_index():
             older.append(detail_url)
 
     library = []
+    if favorites:
+        library.append({"name": "Favorites", "list": favorites})
     if recent:
         library.append({"name": "Recently Added", "list": recent})
     if this_month:

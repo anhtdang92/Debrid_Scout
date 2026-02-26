@@ -68,6 +68,46 @@ def test_heresphere_library_json(client, mocked_responses):
     assert total_urls == 1
 
 
+def test_heresphere_library_favorites_section(client, mocked_responses):
+    """Favorited torrents appear in a 'Favorites' section at the top."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock, \
+         patch('app.routes.heresphere._get_user_data') as mock_ud:
+        mock.return_value = MOCK_TORRENTS
+        # Simulate torrent1 being favorited
+        store = MagicMock()
+        store.is_favorite.side_effect = lambda tid: tid == "torrent1"
+        mock_ud.return_value = store
+        response = client.post("/heresphere")
+
+    data = response.json
+    assert data["library"][0]["name"] == "Favorites"
+    assert len(data["library"][0]["list"]) == 1
+    assert "torrent1" in data["library"][0]["list"][0]
+
+
+def test_heresphere_library_no_favorites_section_when_empty(client, mocked_responses):
+    """No 'Favorites' section when nothing is favorited."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json=MOCK_USER, status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock, \
+         patch('app.routes.heresphere._get_user_data') as mock_ud:
+        mock.return_value = MOCK_TORRENTS
+        store = MagicMock()
+        store.is_favorite.return_value = False
+        mock_ud.return_value = store
+        response = client.post("/heresphere")
+
+    data = response.json
+    section_names = [s["name"] for s in data["library"]]
+    assert "Favorites" not in section_names
+
+
 def test_heresphere_library_html(client, mocked_responses):
     """GET /heresphere with Accept: text/html returns the browser view."""
     mocked_responses.get(
