@@ -139,26 +139,29 @@ class JackettSearchService:
         session = self._create_session()
 
         logger.debug(f"Querying Jackett: {url} with query='{params['q']}' limit={params['limit']}")
-        for attempt in range(1, max_retries + 1):
-            try:
-                response = session.get(url, params=params)
-                logger.debug(f"Jackett HTTP response: {response.status_code}")
-                response.raise_for_status()
-                return response.content
-            except cloudscraper.exceptions.CloudflareChallengeError:
-                logger.warning(f"Cloudflare challenge on attempt {attempt}/{max_retries}")
-                if attempt < max_retries:
-                    time.sleep(delay)
-                else:
-                    logger.error("Cloudflare challenge could not be bypassed after multiple attempts.")
-                    return None
-            except Exception as e:
-                logger.warning(f"Jackett query attempt {attempt}/{max_retries} failed: {e}")
-                if attempt < max_retries:
-                    time.sleep(delay)
-                else:
-                    logger.error(f"Failed to perform Jackett search after {max_retries} attempts: {e}")
-                    return None
+        try:
+            for attempt in range(1, max_retries + 1):
+                try:
+                    response = session.get(url, params=params, timeout=20)
+                    logger.debug(f"Jackett HTTP response: {response.status_code}")
+                    response.raise_for_status()
+                    return response.content
+                except cloudscraper.exceptions.CloudflareChallengeError:
+                    logger.warning(f"Cloudflare challenge on attempt {attempt}/{max_retries}")
+                    if attempt < max_retries:
+                        time.sleep(delay)
+                    else:
+                        logger.error("Cloudflare challenge could not be bypassed after multiple attempts.")
+                        return None
+                except Exception as e:
+                    logger.warning(f"Jackett query attempt {attempt}/{max_retries} failed: {e}")
+                    if attempt < max_retries:
+                        time.sleep(delay)
+                    else:
+                        logger.error(f"Failed to perform Jackett search after {max_retries} attempts: {e}")
+                        return None
+        finally:
+            session.close()
 
         return None
 
@@ -241,31 +244,34 @@ class JackettSearchService:
         delay = 5
         session = self._create_session()
 
-        for attempt in range(1, max_retries + 1):
-            try:
-                # Disable auto-redirects: some indexers redirect .torrent URLs to
-                # magnet links, which we can parse directly instead of downloading.
-                response = session.get(torrent_url, allow_redirects=False, timeout=20)
-                if response.status_code == 404:
+        try:
+            for attempt in range(1, max_retries + 1):
+                try:
+                    # Disable auto-redirects: some indexers redirect .torrent URLs to
+                    # magnet links, which we can parse directly instead of downloading.
+                    response = session.get(torrent_url, allow_redirects=False, timeout=20)
+                    if response.status_code == 404:
+                        return None
+                    if response.status_code in (301, 302):
+                        redirect_url = response.headers.get('Location', '')
+                        if redirect_url.startswith('magnet:?'):
+                            return self._extract_infohash_from_magnet(redirect_url)
+                    elif response.status_code == 200:
+                        # Decode the bencoded .torrent, extract the "info" dict,
+                        # re-encode it, and SHA1-hash it to get the infohash.
+                        torrent_data = bencodepy.decode(response.content)
+                        info_dict = torrent_data.get(b'info')
+                        if info_dict:
+                            encoded_info = bencodepy.encode(info_dict)
+                            return hashlib.sha1(encoded_info).hexdigest()
+                except bencodepy.DecodingError as e:
+                    logger.warning(f"Failed to decode .torrent from {torrent_url}: {e}")
                     return None
-                if response.status_code in (301, 302):
-                    redirect_url = response.headers.get('Location', '')
-                    if redirect_url.startswith('magnet:?'):
-                        return self._extract_infohash_from_magnet(redirect_url)
-                elif response.status_code == 200:
-                    # Decode the bencoded .torrent, extract the "info" dict,
-                    # re-encode it, and SHA1-hash it to get the infohash.
-                    torrent_data = bencodepy.decode(response.content)
-                    info_dict = torrent_data.get(b'info')
-                    if info_dict:
-                        encoded_info = bencodepy.encode(info_dict)
-                        return hashlib.sha1(encoded_info).hexdigest()
-            except bencodepy.DecodingError as e:
-                logger.warning(f"Failed to decode .torrent from {torrent_url}: {e}")
-                return None
-            except Exception as e:
-                logger.debug(f"Attempt {attempt}/{max_retries} to fetch torrent failed: {e}")
-                time.sleep(delay)
+                except Exception as e:
+                    logger.debug(f"Attempt {attempt}/{max_retries} to fetch torrent failed: {e}")
+                    time.sleep(delay)
+        finally:
+            session.close()
 
         return None
 

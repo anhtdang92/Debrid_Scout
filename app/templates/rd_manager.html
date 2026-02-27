@@ -107,9 +107,9 @@
 {% endif %}
 
 <!-- RD Manager Modal -->
-<div class="rd-modal" id="rdModal">
+<div class="rd-modal" id="rdModal" role="dialog" aria-modal="true" aria-labelledby="modal-files-title">
     <div class="rd-modal-content">
-        <span class="rd-close" data-action="close-modal" data-id="rdModal">&times;</span>
+        <span class="rd-close" data-action="close-modal" data-id="rdModal" role="button" aria-label="Close">&times;</span>
         <h3 id="modal-files-title">Files in Torrent</h3>
         <ul id="files-list">
         </ul>

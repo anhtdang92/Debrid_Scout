@@ -173,7 +173,7 @@ class RDDownloadLinkService:
             except RealDebridError as e:
                 logger.error(f"RD error processing torrent '{torrent_name}': {e}")
             except Exception as e:
-                logger.error(f"Unexpected error processing torrent '{torrent_name}': {e}")
+                logger.exception(f"Unexpected error processing torrent '{torrent_name}': {e}")
 
         overall_elapsed = time.perf_counter() - overall_start
 
@@ -240,7 +240,8 @@ class RDDownloadLinkService:
         try:
             requests.delete(
                 f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}',
-                headers={'Authorization': f'Bearer {self.api_key}'}
+                headers={'Authorization': f'Bearer {self.api_key}'},
+                timeout=(5, 15),
             )
             logger.debug(f"Cleaned up failed torrent entry {torrent_id}")
         except Exception as e:
@@ -412,7 +413,7 @@ class RDDownloadLinkService:
             except RealDebridError as e:
                 logger.error(f"RD error processing torrent '{torrent_name}': {e}")
             except Exception as e:
-                logger.error(f"Unexpected error processing torrent '{torrent_name}': {e}")
+                logger.exception(f"Unexpected error processing torrent '{torrent_name}': {e}")
 
         overall_elapsed = time.perf_counter() - overall_start
         yield {

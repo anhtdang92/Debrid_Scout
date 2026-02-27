@@ -13,6 +13,7 @@ import subprocess
 import shutil
 import logging
 import threading
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -287,3 +288,28 @@ class ThumbnailService:
                 f"Preview generation error for {torrent_id}: {e}"
             )
             return None
+
+    # ── Cache cleanup ──────────────────────────────────────────
+
+    def cleanup(self, max_age_days: int = 7) -> int:
+        """
+        Remove cached thumbnails, previews, and metadata older than max_age_days.
+
+        Returns the number of files deleted.
+        """
+        cutoff = time.time() - (max_age_days * 86400)
+        deleted = 0
+        for directory in (self.cache_dir, self.preview_dir):
+            if not os.path.isdir(directory):
+                continue
+            for filename in os.listdir(directory):
+                filepath = os.path.join(directory, filename)
+                try:
+                    if os.path.isfile(filepath) and os.path.getmtime(filepath) < cutoff:
+                        os.remove(filepath)
+                        deleted += 1
+                except OSError as e:
+                    logger.warning(f"Failed to remove {filepath}: {e}")
+        if deleted:
+            logger.info(f"Cache cleanup: removed {deleted} expired files")
+        return deleted

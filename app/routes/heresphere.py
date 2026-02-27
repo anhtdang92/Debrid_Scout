@@ -23,6 +23,7 @@ from flask import (
 )
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from app.services.real_debrid import RealDebridService, RealDebridError
@@ -46,36 +47,48 @@ def _get_user_data():
 
 # ── Torrent info cache (TTL = 5 minutes) ────────────────────
 _torrent_cache = {}
+_torrent_cache_lock = threading.Lock()
 _TORRENT_CACHE_TTL = 300
 
 
 def _get_torrent_info_cached(service, torrent_id):
     """Fetch torrent info via RealDebridService with a short TTL cache."""
     now = time.time()
-    cached = _torrent_cache.get(torrent_id)
-    if cached and (now - cached['ts']) < _TORRENT_CACHE_TTL:
-        return cached['data']
+    with _torrent_cache_lock:
+        cached = _torrent_cache.get(torrent_id)
+        if cached and (now - cached['ts']) < _TORRENT_CACHE_TTL:
+            return cached['data']
     data = service.get_torrent_info(torrent_id)
-    _torrent_cache[torrent_id] = {'data': data, 'ts': now}
+    with _torrent_cache_lock:
+        _torrent_cache[torrent_id] = {'data': data, 'ts': now}
     return data
+
+
+def _safe_headers():
+    """Return request headers with sensitive values redacted."""
+    return {k: ('***' if k.lower() == 'authorization' else v)
+            for k, v in request.headers}
 
 
 @heresphere_bp.before_request
 def check_auth_and_log():
     """Check optional auth token and log every request for debugging."""
     logger.info(f"[HS-DEBUG] {request.method} {request.url}")
-    logger.info(f"[HS-DEBUG] Headers: {dict(request.headers)}")
+    logger.info(f"[HS-DEBUG] Headers: {_safe_headers()}")
     if request.data:
         logger.info(f"[HS-DEBUG] Body: {request.data[:500]}")
 
     # Optional token-based auth — when HERESPHERE_AUTH_TOKEN is set,
-    # API requests must include a matching Authorization header.
-    # Browser HTML view (GET with Accept: text/html) is exempt.
+    # all requests must include a matching Authorization header.
+    # Only GET requests that render HTML (browser view) are exempt.
     token = current_app.config.get('HERESPHERE_AUTH_TOKEN')
-    if token and not _wants_html():
-        auth = request.headers.get('Authorization', '')
-        if auth != f'Bearer {token}':
-            return jsonify({"status": "error", "error": "Unauthorized"}), 401
+    if token:
+        is_browser_get = (request.method == 'GET'
+                          and 'text/html' in request.headers.get('Accept', ''))
+        if not is_browser_get:
+            auth = request.headers.get('Authorization', '')
+            if auth != f'Bearer {token}':
+                return jsonify({"status": "error", "error": "Unauthorized"}), 401
 
 
 def _projection_label(projection, stereo, fov):
@@ -608,7 +621,9 @@ def thumbnail(torrent_id):
 
     cached = svc.get_cached_path(torrent_id)
     if cached:
-        return send_file(cached, mimetype='image/jpeg')
+        resp = send_file(cached, mimetype='image/jpeg')
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
+        return resp
 
     if not svc.available:
         logger.debug("ffmpeg not available — skipping thumbnail generation")
@@ -638,7 +653,9 @@ def preview(torrent_id):
 
     cached = svc.get_cached_preview_path(torrent_id)
     if cached:
-        return send_file(cached, mimetype='video/mp4')
+        resp = send_file(cached, mimetype='video/mp4')
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
+        return resp
 
     if not svc.available:
         logger.debug("ffmpeg not available — skipping preview generation")

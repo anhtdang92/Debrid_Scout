@@ -77,14 +77,14 @@ def test_delete_torrent_route(client, mocked_responses):
         json={"id": 12345, "username": "testuser"},
         status=200
     )
-    with patch('requests.delete') as mock_delete:
-        mock_delete.return_value.status_code = 200
-        mock_delete.return_value.json.return_value = {'status': 'success', 'message': 'Torrent deleted successfully'}
-        mock_delete.return_value.raise_for_status = MagicMock()
+    mocked_responses.delete(
+        "https://api.real-debrid.com/rest/1.0/torrents/delete/sample_torrent_id",
+        status=204,
+    )
 
-        response = client.delete("/torrent/delete_torrent/sample_torrent_id")
-        assert response.status_code == 200
-        assert response.json['status'] == 'success'
+    response = client.delete("/torrent/delete_torrent/sample_torrent_id")
+    assert response.status_code == 200
+    assert response.json['status'] == 'success'
 
 
 # Test the launch VLC route (corrected from /stream_vlc to /launch_vlc)
@@ -115,16 +115,15 @@ def test_unrestrict_link_route(client, mocked_responses):
         json={"id": 12345, "username": "testuser"},
         status=200
     )
-    with patch('requests.post') as mock_post:
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.json.return_value = {
-            'download': 'https://download.real-debrid.com/d/abc123/movie.mkv'
-        }
-        mock_post.return_value.raise_for_status = MagicMock()
+    mocked_responses.post(
+        "https://api.real-debrid.com/rest/1.0/unrestrict/link",
+        json={'download': 'https://download.real-debrid.com/d/abc123/movie.mkv'},
+        status=200,
+    )
 
-        response = client.post("/torrent/unrestrict_link", json={"link": "http://example.com/restricted"})
-        assert response.status_code == 200
-        assert response.json['unrestricted_link'] == 'https://download.real-debrid.com/d/abc123/movie.mkv'
+    response = client.post("/torrent/unrestrict_link", json={"link": "http://example.com/restricted"})
+    assert response.status_code == 200
+    assert response.json['unrestricted_link'] == 'https://download.real-debrid.com/d/abc123/movie.mkv'
 
 
 # Test torrent details route with actual data structure
@@ -134,10 +133,9 @@ def test_get_torrent_details_route(client, mocked_responses):
         json={"id": 12345, "username": "testuser"},
         status=200
     )
-    with patch('requests.get') as mock_get:
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.raise_for_status = MagicMock()
-        mock_get.return_value.json.return_value = {
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/torrents/info/sample_torrent_id",
+        json={
             "filename": "Test.Movie.2024.mkv",
             "status": "downloaded",
             "progress": 100,
@@ -152,12 +150,14 @@ def test_get_torrent_details_route(client, mocked_responses):
             "links": [
                 "https://download.real-debrid.com/d/abc123/Test.Movie.2024.mkv"
             ]
-        }
+        },
+        status=200,
+    )
 
-        response = client.get("/torrent/torrents/sample_torrent_id")
-        assert response.status_code == 200
-        assert response.json['filename'] == "Test.Movie.2024.mkv"
-        assert response.json['files'][0]['link'] == "https://download.real-debrid.com/d/abc123/Test.Movie.2024.mkv"
+    response = client.get("/torrent/torrents/sample_torrent_id")
+    assert response.status_code == 200
+    assert response.json['filename'] == "Test.Movie.2024.mkv"
+    assert response.json['files'][0]['link'] == "https://download.real-debrid.com/d/abc123/Test.Movie.2024.mkv"
 
 
 # ── HereSphere scan endpoint tests ───────────────────────────

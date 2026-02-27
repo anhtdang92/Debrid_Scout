@@ -22,6 +22,15 @@ class Config:
     REAL_DEBRID_API_KEY = os.getenv('REAL_DEBRID_API_KEY')
     HERESPHERE_AUTH_TOKEN = os.getenv('HERESPHERE_AUTH_TOKEN')  # optional
 
+    # Tunable parameters (override via environment variables)
+    ACCOUNT_CACHE_TTL = int(os.getenv('ACCOUNT_CACHE_TTL', '300'))
+    RD_RATE_LIMIT_DELAY = float(os.getenv('RD_RATE_LIMIT_DELAY', '0.2'))
+    RD_API_TIMEOUT = int(os.getenv('RD_API_TIMEOUT', '15'))
+    JACKETT_TIMEOUT = int(os.getenv('JACKETT_TIMEOUT', '20'))
+    JACKETT_RETRY_COUNT = int(os.getenv('JACKETT_RETRY_COUNT', '5'))
+    LOG_MAX_BYTES = int(os.getenv('LOG_MAX_BYTES', '10240'))
+    THUMBNAIL_MAX_AGE_DAYS = int(os.getenv('THUMBNAIL_MAX_AGE_DAYS', '7'))
+
 class DevelopmentConfig(Config):
     """Development-specific configuration."""
     DEBUG = os.getenv("DEBUG", "True") == "True"

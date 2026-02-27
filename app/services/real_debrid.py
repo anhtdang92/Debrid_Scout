@@ -24,25 +24,39 @@ class RealDebridService:
             logger.error("REAL_DEBRID_API_KEY is not set.")
             raise RealDebridError("Real-Debrid API key is missing.")
 
-        # Headers for authentication in Real-Debrid API requests
-        self.headers = {
-            'Authorization': f'Bearer {self.api_key}'
-        }
-        
+        # Reusable session for connection pooling
+        self._session = requests.Session()
+        self._session.headers['Authorization'] = f'Bearer {self.api_key}'
+
+        # Legacy attribute kept for compatibility
+        self.headers = dict(self._session.headers)
+
         # A small delay (in seconds) between requests to prevent rate limiting
         self.request_delay = 0.2
+        # HTTP timeout: (connect_timeout, read_timeout) in seconds
+        self.timeout = (5, 15)
 
     def _rate_limit(self):
         """Enforce a simple delay to avoid hitting rate limits."""
         time.sleep(self.request_delay)
+
+    def _check_response(self, response):
+        """Check response for rate limiting; back off on 429."""
+        if response.status_code == 429:
+            retry_after = int(response.headers.get('Retry-After', 2))
+            logger.warning(f"RD rate limit hit (429). Retrying after {retry_after}s.")
+            time.sleep(retry_after)
+            raise requests.HTTPError("429 Too Many Requests", response=response)
+        return response
 
     def get_account_info(self) -> Dict[str, Any]:
         """Fetch account information from Real-Debrid."""
         try:
             self._rate_limit()
             logger.debug("Requesting Real-Debrid account information.")
-            response = requests.get('https://api.real-debrid.com/rest/1.0/user', headers=self.headers)
-            response.raise_for_status()  # Will raise HTTPError for bad responses
+            response = self._session.get('https://api.real-debrid.com/rest/1.0/user', timeout=self.timeout)
+            self._check_response(response)
+            response.raise_for_status()
             account_data = response.json()
             logger.debug("Successfully fetched account information.")
 
@@ -74,11 +88,12 @@ class RealDebridService:
         try:
             self._rate_limit()
             logger.debug(f"Adding magnet link to Real-Debrid: {magnet_link}")
-            response = requests.post(
+            response = self._session.post(
                 'https://api.real-debrid.com/rest/1.0/torrents/addMagnet',
-                headers=self.headers,
-                data={'magnet': magnet_link}
+                data={'magnet': magnet_link},
+                timeout=self.timeout,
             )
+            self._check_response(response)
             response.raise_for_status()
             torrent_id = response.json().get('id')
             logger.debug(f"Magnet link added successfully with torrent ID: {torrent_id}")
@@ -92,11 +107,12 @@ class RealDebridService:
         try:
             self._rate_limit()
             logger.debug(f"Selecting files '{files}' for torrent ID: {torrent_id}")
-            response = requests.post(
+            response = self._session.post(
                 f'https://api.real-debrid.com/rest/1.0/torrents/selectFiles/{torrent_id}',
-                headers=self.headers,
-                data={'files': files}
+                data={'files': files},
+                timeout=self.timeout,
             )
+            self._check_response(response)
             if response.status_code == 204:
                 logger.debug(f"Files selected successfully for torrent ID: {torrent_id}")
                 return True
@@ -112,10 +128,11 @@ class RealDebridService:
         try:
             self._rate_limit()
             logger.debug(f"Fetching torrent info for ID: {torrent_id}")
-            response = requests.get(
+            response = self._session.get(
                 f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
-                headers=self.headers
+                timeout=self.timeout,
             )
+            self._check_response(response)
             response.raise_for_status()
             torrent_info = response.json()
             logger.debug(f"Torrent info fetched successfully for ID: {torrent_id}")
@@ -129,11 +146,12 @@ class RealDebridService:
         try:
             self._rate_limit()
             logger.debug(f"Unrestricting link: {link}")
-            response = requests.post(
+            response = self._session.post(
                 'https://api.real-debrid.com/rest/1.0/unrestrict/link',
-                headers=self.headers,
-                data={'link': link}
+                data={'link': link},
+                timeout=self.timeout,
             )
+            self._check_response(response)
             response.raise_for_status()
             unrestricted_link = response.json().get('download')
             logger.debug(f"Link unrestricted successfully: {unrestricted_link}")
@@ -152,15 +170,16 @@ class RealDebridService:
             while True:
                 self._rate_limit()
                 logger.debug(f"Fetching torrents from page {page}.")
-                response = requests.get(
+                response = self._session.get(
                     f'https://api.real-debrid.com/rest/1.0/torrents?page={page}',
-                    headers=self.headers
+                    timeout=self.timeout,
                 )
 
                 if response.status_code == 204:
                     logger.info("No more torrents available.")
                     break
 
+                self._check_response(response)
                 response.raise_for_status()
                 torrents = response.json()
 
@@ -178,3 +197,19 @@ class RealDebridService:
         except requests.RequestException as e:
             logger.error(f"Error fetching torrents: {e}")
             raise RealDebridError("Failed to fetch torrents.")
+
+    def delete_torrent(self, torrent_id: str) -> bool:
+        """Delete a torrent from Real-Debrid by ID."""
+        try:
+            self._rate_limit()
+            response = self._session.delete(
+                f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}',
+                timeout=self.timeout,
+            )
+            self._check_response(response)
+            response.raise_for_status()
+            logger.info(f"Torrent {torrent_id} deleted successfully.")
+            return True
+        except requests.RequestException as e:
+            logger.error(f"Error deleting torrent {torrent_id}: {e}")
+            raise RealDebridError(f"Failed to delete torrent {torrent_id}.")

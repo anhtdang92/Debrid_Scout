@@ -121,7 +121,7 @@ class RDCachedLinkService:
         try:
             expected_bytes = int(expected_size)
             url = f"https://api.real-debrid.com/rest/1.0/torrents/instantAvailability/{infohash}"
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers, timeout=(5, 15))
             response.raise_for_status()
             data = response.json()
 
