@@ -50,6 +50,17 @@
     <span class="hs-count" id="hs-count">{{ videos|length }} video{{ 's' if videos|length != 1 else '' }}</span>
 </div>
 
+<!-- Skeleton Grid (shown until real content renders) -->
+<div class="hs-grid" id="hs-skeleton" aria-hidden="true">
+    {% for _ in range(6) %}
+    <div class="skeleton-card">
+        <div class="skeleton skeleton-thumb"></div>
+        <div class="skeleton skeleton-line medium"></div>
+        <div class="skeleton skeleton-line short"></div>
+    </div>
+    {% endfor %}
+</div>
+
 <!-- Card Grid -->
 {% if videos %}
 <div class="hs-grid" id="hs-grid">
@@ -132,4 +143,11 @@
         <ul id="files-list"></ul>
     </div>
 </div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var skeleton = document.getElementById("hs-skeleton");
+    if (skeleton) skeleton.style.display = "none";
+  });
+</script>
 {% endblock %}

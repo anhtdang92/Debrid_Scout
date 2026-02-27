@@ -928,9 +928,9 @@ input[type="checkbox"]:checked::after {
     font-size: 0.85rem;
 }
 
-.hs-copy-btn {
-    padding: 6px 12px !important;
-    font-size: 0.8rem !important;
+.hs-banner .hs-copy-btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
 }
 
 /* HS Toolbar */
@@ -955,9 +955,9 @@ input[type="checkbox"]:checked::after {
     font-size: 0.85rem;
 }
 
-.hs-search {
+.hs-search-wrap .hs-search {
     width: 100%;
-    padding-left: 38px !important;
+    padding-left: 38px;
 }
 
 /* HS Sort dropdown */
@@ -1222,9 +1222,9 @@ input[type="checkbox"]:checked::after {
     border-top: 1px solid var(--border);
 }
 
-.hs-action-btn {
-    padding: 6px 12px !important;
-    font-size: 0.8rem !important;
+.hs-card-actions .hs-action-btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
     flex: 1;
     justify-content: center;
 }
@@ -1246,6 +1246,44 @@ input[type="checkbox"]:checked::after {
     text-align: center;
     color: var(--text-muted);
     padding: 40px;
+}
+
+/* --- Loading Skeleton --- */
+@keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+
+.skeleton {
+    background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-card) 37%, var(--bg-elevated) 63%);
+    background-size: 800px 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+
+.skeleton-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.skeleton-thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+}
+
+.skeleton-line {
+    height: 14px;
+    margin: 12px 16px;
+}
+
+.skeleton-line.short {
+    width: 40%;
+}
+
+.skeleton-line.medium {
+    width: 65%;
 }
 
 /* --- About Page --- */
@@ -1393,6 +1431,44 @@ input[type="checkbox"]:checked::after {
     .timer-info {
         flex-direction: column;
         gap: 8px;
+    }
+}
+
+@media (max-width: 600px) {
+    .hs-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+
+    .hs-toolbar {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .hs-search-wrap {
+        flex: 1 1 100%;
+    }
+
+    .hs-sort-wrap {
+        flex: 1;
+    }
+
+    .hs-count {
+        flex-shrink: 0;
+    }
+
+    .rd-modal-content {
+        padding: 20px;
+        width: 95%;
+    }
+
+    .button-group {
+        flex-direction: column;
+    }
+
+    .button-group .button,
+    .button-group .delete-button {
+        width: 100%;
+        justify-content: center;
     }
 }
 

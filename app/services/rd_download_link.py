@@ -190,7 +190,7 @@ class RDDownloadLinkService:
         try:
             existing_torrents = self.rd_service.get_all_torrents()
             return {
-                t.get('hash', '').lower(): t.get('id')
+                t.get('hash', '').lower(): t['id']
                 for t in existing_torrents if t.get('hash') and t.get('id')
             }
         except Exception as e:
@@ -226,7 +226,8 @@ class RDDownloadLinkService:
                 torrent_id = existing_hashes[infohash_lower]
                 logger.debug(f"Reusing existing torrent ID {torrent_id} for '{torrent_name}'")
             else:
-                logger.debug(f"Adding magnet for '{torrent_name}' (hash: {infohash[:8]}...)")
+                hash_preview = infohash[:8] if infohash else 'N/A'
+                logger.debug(f"Adding magnet for '{torrent_name}' (hash: {hash_preview}...)")
                 torrent_id = self.rd_service.add_magnet(magnet_link)
                 is_new_torrent = True
                 if not torrent_id:
@@ -255,11 +256,12 @@ class RDDownloadLinkService:
 
             # Verify the torrent actually reached "downloaded" status.
             if status != 'downloaded':
-                torrent_info, ok = self._wait_for_downloaded(
+                updated_info, ok = self._wait_for_downloaded(
                     torrent_id, torrent_name, is_new_torrent
                 )
-                if not ok:
+                if not ok or updated_info is None:
                     return None
+                torrent_info = updated_info
 
             files = torrent_info.get('files') or []
             links = torrent_info.get('links') or []

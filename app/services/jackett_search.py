@@ -18,8 +18,13 @@ import xml.etree.ElementTree as ET
 from typing import Optional, List, Dict, Tuple
 
 import cloudscraper
-import bencodepy
 from flask import current_app
+
+try:
+    import bencodepy
+    _HAS_BENCODEPY = True
+except ImportError:
+    _HAS_BENCODEPY = False
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +244,11 @@ class JackettSearchService:
         return results
 
     def _get_infohash_from_torrent_url(self, torrent_url: str) -> Optional[str]:
-        """Download a .torrent file and compute its infohash."""
+        """Download a .torrent file and compute its infohash.
+
+        Requires bencodepy for .torrent parsing. If bencodepy is not installed,
+        only magnet-redirect extraction is attempted.
+        """
         max_retries = 5
         delay = 5
         session = self._create_session()
@@ -257,6 +266,9 @@ class JackettSearchService:
                         if redirect_url.startswith('magnet:?'):
                             return self._extract_infohash_from_magnet(redirect_url)
                     elif response.status_code == 200:
+                        if not _HAS_BENCODEPY:
+                            logger.warning("bencodepy not installed — cannot parse .torrent file")
+                            return None
                         # Decode the bencoded .torrent, extract the "info" dict,
                         # re-encode it, and SHA1-hash it to get the infohash.
                         torrent_data = bencodepy.decode(response.content)
@@ -264,10 +276,10 @@ class JackettSearchService:
                         if info_dict:
                             encoded_info = bencodepy.encode(info_dict)
                             return hashlib.sha1(encoded_info).hexdigest()
-                except bencodepy.DecodingError as e:
-                    logger.warning(f"Failed to decode .torrent from {torrent_url}: {e}")
-                    return None
                 except Exception as e:
+                    if _HAS_BENCODEPY and isinstance(e, bencodepy.DecodingError):
+                        logger.warning(f"Failed to decode .torrent from {torrent_url}: {e}")
+                        return None
                     logger.debug(f"Attempt {attempt}/{max_retries} to fetch torrent failed: {e}")
                     time.sleep(delay)
         finally:

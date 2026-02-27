@@ -247,7 +247,7 @@ Cached thumbnails and previews never expire. Disk usage grows unbounded.
 
 ## P3 — Low Priority / Polish
 
-### 28. Add Python Type Checking
+### 28. Add Python Type Checking ✅
 No `mypy` or `pyright` configured. Type hints are partial (services have some, routes have none).
 
 **Fix:** Add `mypy` to dev deps, create `pypy.ini`, gradually annotate.
@@ -268,22 +268,22 @@ No `mypy` or `pyright` configured. Type hints are partial (services have some, r
 
 ---
 
-### 31. Improve CSS Button Specificity
+### 31. Improve CSS Button Specificity ✅
 `styles.css:371-471` — `.button`, `.submit-button`, `.delete-button`, `.debrid-button` overlap. Could use BEM methodology or class composition.
 
 ---
 
-### 32. Add Responsive Breakpoint for 600-768px
+### 32. Add Responsive Breakpoint for 600-768px ✅
 `styles.css` has breakpoints at 768px and 480px, but nothing for tablet portrait (600-768px).
 
 ---
 
-### 33. Add Loading Skeletons for Library Pages
+### 33. Add Loading Skeletons for Library Pages ✅
 HereSphere and RD Manager pages show no visual feedback while API data loads. Add CSS skeleton placeholders.
 
 ---
 
-### 34. Add `bencodepy` Alternative
+### 34. Add `bencodepy` Alternative ✅
 `bencodepy` hasn't been updated since 2021. Consider `bencode.py` or `better-bencode` as alternatives.
 
 ---
@@ -316,7 +316,5 @@ HereSphere and RD Manager pages show no visual feedback while API data loads. Ad
 | P0 Critical | 7 | 7 ✅ | Timeouts, auth bypass, XSS, Docker security |
 | P1 High | 10 | 10 ✅ | CI/CD, connection pooling, rate limiting, error format |
 | P2 Medium | 10 | 10 ✅ | Accessibility, validation, caching, config |
-| P3 Polish | 10 | 4 | Color contrast, session cleanup, error logging |
-| **Total** | **37** | **31** | |
-
-**Remaining items (6):** #28 (type checking), #31 (CSS specificity), #32 (responsive breakpoint), #33 (loading skeletons), #34 (bencodepy alternative).
+| P3 Polish | 10 | 10 ✅ | Color contrast, session cleanup, error logging |
+| **Total** | **37** | **37 ✅** | **All items complete** |
