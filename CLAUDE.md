@@ -22,18 +22,36 @@ python app/main.py
 | `JACKETT_API_KEY` | Jackett API key |
 | `JACKETT_URL` | Jackett base URL (default: `http://localhost:9117`) |
 
-Optional: `FLASK_ENV` (development/production), `DEBUG_MODE` (True/False), `SECRET_KEY`.
+### Optional / Tunable Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `FLASK_ENV` | `development` | `development` or `production` |
+| `DEBUG_MODE` | `False` | Enable debug logging |
+| `SECRET_KEY` | random | Required in production; random in dev |
+| `HERESPHERE_AUTH_TOKEN` | (none) | Optional bearer token for VR API auth |
+| `ACCOUNT_CACHE_TTL` | `300` | Seconds to cache RD account info |
+| `RD_RATE_LIMIT_DELAY` | `0.2` | Seconds between RD API calls |
+| `RD_API_TIMEOUT` | `15` | Timeout for RD API requests (seconds) |
+| `JACKETT_TIMEOUT` | `20` | Timeout for Jackett requests (seconds) |
+| `JACKETT_RETRY_COUNT` | `5` | Max retries for Jackett queries |
+| `LOG_MAX_BYTES` | `10240` | Max log file size before rotation |
+| `THUMBNAIL_MAX_AGE_DAYS` | `7` | TTL for cached thumbnails/previews |
 
 ## Architecture
 
 ```
 Flask Routes (app/routes/) → Service Layer (app/services/) → External APIs
+                                    ↓
+                        Shared helpers (vr_helper, file_helper)
+                                    ↓
+                        App extensions (UserDataStore, ThumbnailService)
 ```
 
 **Core search pipeline:**
 1. `JackettSearchService.search()` — query Jackett Torznab API, parse XML, extract infohashes
 2. `RDCachedLinkService.search_and_check_cache()` — check Real-Debrid instant availability
-3. `RDDownloadLinkService.search_and_get_links()` — add magnets, select video files, unrestrict links
+3. `RDDownloadLinkService._process_torrent()` — add magnet, select video files, unrestrict links
 
 Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream()`.
 
@@ -67,32 +85,58 @@ Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream
 
 ## Service Layer API
 
-### `RealDebridService` (`app/services/real_debrid.py`)
+### `RealDebridService` (`app/services/real_debrid.py` — 215 lines)
 - `get_account_info()` → Dict — fetch RD user/account data
 - `add_magnet(magnet_link)` → str (torrent_id) — add magnet to RD
 - `select_files(torrent_id, files='all')` → bool — select files for download
 - `get_torrent_info(torrent_id)` → Dict — detailed torrent info (files, links, status)
 - `unrestrict_link(link)` → str (direct URL) — unrestrict a download link
 - `get_all_torrents()` → List[Dict] — paginated fetch of all user torrents
-- Rate-limited: 0.2s delay between API calls
+- `delete_torrent(torrent_id)` → None — delete torrent from RD
+- Uses `requests.Session()` for connection pooling; rate-limited with configurable delay
 
-### `JackettSearchService` (`app/services/jackett_search.py`)
+### `JackettSearchService` (`app/services/jackett_search.py` — 321 lines)
 - `search(query, limit=10)` → (results, elapsed_seconds)
 - Uses `cloudscraper` for Cloudflare bypass, retries up to 5 times
 - Resolves infohashes from: magnet URIs → torznab XML attribute → .torrent file download
 - Parses torznab XML with `xml.etree.ElementTree`
+- Graceful fallback if `bencodepy` is not installed (skips .torrent parsing)
 
-### `RDCachedLinkService` (`app/services/rd_cached_link.py`)
+### `RDCachedLinkService` (`app/services/rd_cached_link.py` — 150 lines)
 - `search_and_check_cache(query, limit=10)` → (results, self_elapsed, jackett_elapsed)
 - Deduplicates by infohash, checks RD instant availability API
 
-### `RDDownloadLinkService` (`app/services/rd_download_link.py`)
+### `RDDownloadLinkService` (`app/services/rd_download_link.py` — 353 lines)
 - `search_and_get_links(query, limit=10)` → Dict with `data` and `timers`
 - `search_and_get_links_stream(query, limit=10, cancel_event=None)` → generator of SSE events
-- Full pipeline: search → cache check → deduplicate against existing RD torrents → add magnet → select video files → unrestrict links
+- `_process_torrent(cached_link, existing_hashes, processed_infohashes)` → Optional[Dict] — shared per-torrent pipeline
+- `_fetch_existing_hashes()` → Dict[str, str] — hash→ID lookup for deduplication
 - Auto-cleanup: deletes stale/failed torrents that don't reach "downloaded" status
 
-### `FileHelper` (`app/services/file_helper.py`)
+### `ThumbnailService` (`app/services/thumbnail.py` — 315 lines)
+- `get_thumbnail(torrent_id)` → bytes — generate/cache video thumbnail via ffmpeg
+- `get_preview(torrent_id)` → bytes — generate/cache animated preview clip
+- `get_duration(torrent_id)` → int — video duration in milliseconds
+- `cleanup(max_age_days=7)` → int — remove expired cache files
+- Singleton via `app.extensions['thumb_service']`
+
+### `UserDataStore` (`app/services/user_data.py` — 172 lines)
+- `is_favorite(torrent_id)` → bool
+- `get_rating(torrent_id)` → float
+- `get_playback_time(torrent_id)` → float (seconds)
+- `increment_play_count(torrent_id)` → None
+- `process_heresphere_update(torrent_id, body)` → None — write-back favorites/ratings
+- Persists to `data/user_data.json` with thread-safe locking
+
+### `VR Helper` (`app/services/vr_helper.py` — 188 lines)
+- `guess_projection(filename)` → (projection, stereo, fov, lens) — VR format detection
+- `guess_projection_deovr(filename)` → (screenType, stereoMode) — DeoVR format
+- `build_restricted_map(selected_files, links)` → Dict — shared file-ID→link mapping
+- `get_video_files(selected_files)` → List — filter to video files only
+- `is_video(filename)` / `is_subtitle(filename)` — extension checks
+- `launch_heresphere_exe(video_url)` → (bool, error_msg)
+
+### `FileHelper` (`app/services/file_helper.py` — 64 lines)
 - `is_video_file(filename)` → bool — checks against `video_extensions.json`
 - `format_file_size(bytes)` → str — human-readable size (e.g., "4.50 GB")
 - `simplify_filename(name)` → str — replaces dots with spaces, preserves extension
@@ -102,27 +146,30 @@ Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream
 
 ```
 app/
-├── __init__.py              # App factory, blueprint registration, CSRF, caching
+├── __init__.py              # App factory, blueprint registration, CSRF, caching, extensions
 ├── main.py                  # Entry point (creates app, runs on 0.0.0.0:5000)
-├── config.py                # Config/DevelopmentConfig/ProductionConfig classes
+├── config.py                # Config/DevelopmentConfig/ProductionConfig + tunable env vars
 ├── routes/
 │   ├── __init__.py          # Empty
-│   ├── search.py            # GET/POST /, POST /stream, POST /cancel
-│   ├── torrent.py           # /torrent/* — RD manager, delete, unrestrict, VLC launch
+│   ├── search.py            # GET/POST /, POST /stream, POST /cancel (163 lines)
+│   ├── torrent.py           # /torrent/* — RD manager, delete, unrestrict, VLC launch (198 lines)
 │   ├── account.py           # GET /account/account
-│   ├── info.py              # GET /about, GET /contact
-│   ├── heresphere.py        # /heresphere/* — HereSphere native VR API + HTML browser view
-│   └── deovr.py             # /deovr/* — DeoVR-compatible VR API
+│   ├── info.py              # GET /about, GET /contact (19 lines)
+│   ├── heresphere.py        # /heresphere/* — HereSphere native VR API + HTML browser (702 lines)
+│   └── deovr.py             # /deovr/* — DeoVR-compatible VR API (290 lines)
 ├── services/
 │   ├── __init__.py          # Empty
-│   ├── real_debrid.py       # RealDebridService — RD API wrapper
-│   ├── jackett_search.py    # JackettSearchService — Torznab search + XML parsing
-│   ├── rd_cached_link.py    # RDCachedLinkService — cache availability checking
-│   ├── rd_download_link.py  # RDDownloadLinkService — full download orchestration pipeline
-│   └── file_helper.py       # FileHelper — video extensions, file sizes, category mapping
+│   ├── real_debrid.py       # RealDebridService — RD API wrapper with Session pooling (215 lines)
+│   ├── jackett_search.py    # JackettSearchService — Torznab search + XML parsing (321 lines)
+│   ├── rd_cached_link.py    # RDCachedLinkService — cache availability checking (150 lines)
+│   ├── rd_download_link.py  # RDDownloadLinkService — full download pipeline (353 lines)
+│   ├── file_helper.py       # FileHelper — video extensions, file sizes, category mapping (64 lines)
+│   ├── vr_helper.py         # Shared VR utilities — projection, restricted maps, launch (188 lines)
+│   ├── thumbnail.py         # ThumbnailService — ffmpeg thumbnails + preview clips (315 lines)
+│   └── user_data.py         # UserDataStore — favorites, ratings, playback tracking (172 lines)
 ├── static/
-│   ├── css/styles.css       # Main stylesheet (dark theme)
-│   ├── js/scripts.js        # Frontend JS (SSE handling, VLC/HereSphere launch, RD Manager UI)
+│   ├── css/styles.css       # Main stylesheet — dark theme, skeletons, responsive (1460 lines)
+│   ├── js/scripts.js        # Frontend JS — SSE, modals, event delegation, VR launch (1224 lines)
 │   ├── category_mapping.json # Torznab category ID → name mapping
 │   ├── category_icons.json  # Category → icon mapping for UI
 │   ├── video_extensions.json # List of recognized video file extensions
@@ -134,59 +181,74 @@ app/
     ├── index.html           # Search page with results display
     ├── rd_manager.html      # RD torrent manager with file browser
     ├── account_info.html    # Account info display
-    ├── heresphere.html      # HereSphere browser view for VR library
+    ├── heresphere.html      # HereSphere browser view with skeleton loading
     ├── navbar.html          # Navigation bar partial
     ├── about.html           # About page
     ├── contact.html         # Contact page
     └── partials/
         └── search_results.html  # Search results partial (reused by SSE)
 
-tests/
-├── conftest.py              # Fixtures: app, client, runner, mocked_responses
-├── test_main.py             # Route tests (index, RD manager, about, contact, search, delete, VLC, unrestrict, torrent details)
-├── test_search.py           # Search functionality tests (currently empty or minimal)
-└── test_services.py         # Service unit tests (RealDebridService, JackettSearchService)
+tests/                       # 106 tests total
+├── conftest.py              # Fixtures: app, client, runner, mocked_responses (51 lines)
+├── test_main.py             # Route + integration tests: 20 tests (278 lines)
+├── test_search.py           # Search + SSE streaming tests: 13 tests (230 lines)
+├── test_services.py         # Service unit tests: 25 tests (318 lines)
+└── test_vr_routes.py        # VR route + service tests: 48 tests (1021 lines)
+
+docs/
+├── codebase-improvements.md # 37-item improvement plan (all complete ✅)
+└── heresphere-improvements.md # HereSphere-specific improvement plan
 
 Root files:
 ├── .env.template            # Environment variable template
 ├── .gitignore               # Standard Python/Node ignores
 ├── .gitattributes           # Git LFS / line ending config
 ├── .dockerignore            # Docker build exclusions
-├── Dockerfile               # Container build (gunicorn on port 5000)
-├── requirements.txt         # Python dependencies (13 packages)
+├── .github/workflows/ci.yml # GitHub Actions CI (pytest + ESLint, Python 3.11/3.12)
+├── Dockerfile               # Container build (gunicorn, non-root user, port 5000)
+├── requirements.txt         # Python dependencies (13 packages, pinned upper bounds)
 ├── package.json             # Node config (ESLint, Prettier, Commitizen, lint-staged)
-├── eslint.config.mjs        # ESLint flat config for JS files
+├── eslint.config.mjs        # ESLint flat config with @eslint/js recommended rules
+├── mypy.ini                 # Python type checking config (gradual adoption)
 ├── CLAUDE.md                # This file — project index for AI assistants
 ├── README.md                # User-facing documentation
 ├── CHANGELOG.md             # Version history (Conventional Commits)
 ├── ROADMAP.md               # Feature roadmap with completion status
-├── LICENSE                  # MIT License
-├── project_index.md         # Legacy project index (superseded by CLAUDE.md)
-└── project_files.txt        # Legacy file listing
+└── LICENSE                  # MIT License
 ```
 
 ## Key Technical Details
 
 - **Flask factory pattern** in `app/__init__.py` with blueprint registration
-- **CSRF protection** via Flask-WTF (`CSRFProtect`); all API blueprints (torrent, heresphere, deovr, search) are exempt
-- **Account info caching** — 5-minute TTL via module-level `_account_cache` dict, loaded in `before_request` hook into Flask `g`, injected into all templates via `context_processor`
-- **Cloudflare bypass** — `cloudscraper` used in Jackett search for protected indexers (5 retries with 2s delay)
-- **Rate limiting** — 0.2s delay between Real-Debrid API calls (`_rate_limit()`) to prevent throttling
-- **Torrent file parsing** — `bencodepy` decodes .torrent files, SHA1-hashes the `info` dict to extract infohashes
+- **CSRF protection** via Flask-WTF (`CSRFProtect`); all API blueprints (torrent, heresphere, deovr, search) are exempt (JSON APIs use Authorization headers)
+- **Account info caching** — configurable TTL via `ACCOUNT_CACHE_TTL`, loaded in `before_request` hook into Flask `g`, injected into all templates via `context_processor`
+- **Connection pooling** — `requests.Session()` in RealDebridService for HTTP connection reuse
+- **Cloudflare bypass** — `cloudscraper` used in Jackett search for protected indexers (configurable retries with 2s delay); sessions closed in `finally` blocks
+- **Rate limiting** — configurable delay between Real-Debrid API calls (`_rate_limit()`) with Retry-After header support for 429 responses
+- **Torrent file parsing** — `bencodepy` (optional) decodes .torrent files, SHA1-hashes the `info` dict to extract infohashes; graceful fallback if not installed
 - **Infohash resolution** — three-tier: magnet URI regex → torznab XML attribute → .torrent download+parse
-- **Duplicate prevention** — fetches existing RD torrents, builds hash→ID lookup to reuse instead of re-adding magnets
+- **Duplicate prevention** — `_fetch_existing_hashes()` builds hash→ID lookup to reuse existing RD torrents
 - **Stale cache cleanup** — auto-deletes newly-added torrents that fail to reach "downloaded" status (dead statuses: error, magnet_error, virus, dead)
 - **VR projection detection** — filename-based pattern matching for projection type (equirectangular, fisheye, perspective) and stereo mode (SBS, TB, mono), with FOV and lens detection (MKX200, MKX220, RF52)
-- **HereSphere native API** — structured tags, time-based library sections (Recent/This Month/Older), `HereSphere-JSON-Version: 1` header
+- **HereSphere native API** — structured tags, time-based library sections (Recent/This Month/Older), `HereSphere-JSON-Version: 1` header, write-back for favorites/ratings
 - **DeoVR API** — simplified format with `screenType`/`stereoMode` fields, `encodings` array
-- **SSE streaming** — search results streamed via `text/event-stream` with cancellation support (threading.Event)
-- **Rotating logs** — `logs/app.log`, 10KB max, 10 backup files
-- **Docker support** — `Dockerfile` with gunicorn, `.dockerignore` for clean builds
+- **Playback tracking** — `UserDataStore` persists favorites, ratings, playback position, play count to `data/user_data.json` with thread-safe `threading.Lock()`
+- **Video thumbnails** — `ThumbnailService` generates JPEG thumbnails and MP4 preview clips via ffmpeg, with TTL-based cleanup
+- **SSE streaming** — search results streamed via `text/event-stream` with cancellation support (`threading.Event`), thread-safe active search tracking
+- **Shared VR helpers** — `build_restricted_map()` and `get_video_files()` eliminate duplication across heresphere, deovr, and torrent routes
+- **Skeleton loading** — CSS shimmer animation placeholders for HereSphere library while content loads
+- **Responsive design** — three breakpoints (768px, 600px, 480px) for mobile/tablet support
+- **WCAG AA contrast** — `--text-muted` color meets 4.5:1 contrast ratio
+- **Rotating logs** — `logs/app.log`, configurable max size via `LOG_MAX_BYTES`, 10 backup files
+- **Docker support** — non-root user, gunicorn, `.dockerignore` for clean builds
 
 ## Running Tests
 
 ```bash
-pytest tests/
+pytest tests/                # 106 tests
+pytest tests/ -v             # verbose output
+mypy app/ --config-file mypy.ini  # type checking (gradual)
+npx eslint app/static/js/    # JS linting
 ```
 
 Tests use `pytest-mock` and `responses` to mock external HTTP calls. CSRF is disabled in test config.
@@ -195,16 +257,18 @@ Test fixtures in `conftest.py` reset the account cache between tests and provide
 ## Development Conventions
 
 - **Commits:** Conventional Commits via Commitizen (feat, fix, refactor, docs, etc.)
-- **Linting:** ESLint + Prettier for JS; Husky + lint-staged for pre-commit hooks
+- **Linting:** ESLint (recommended rules + no-var, prefer-const, eqeqeq) + Prettier for JS; Husky + lint-staged for pre-commit hooks
+- **Type checking:** mypy configured for gradual adoption (`mypy.ini`)
 - **Versioning:** standard-version for semantic versioning
 - **Branching:** `main` is the primary branch
+- **CI:** GitHub Actions runs pytest (Python 3.11/3.12 matrix) and ESLint on push/PR
 
 ## Dependencies
 
 Key Python packages (see `requirements.txt`):
 - Flask 3.1.0, Flask-Caching, Flask-WTF
-- requests, cloudscraper, bencodepy
+- requests, cloudscraper, bencodepy (optional)
 - python-dotenv, gunicorn
 
 Dev/test packages:
-- pytest, pytest-mock, responses
+- pytest, pytest-mock, responses, mypy
