@@ -55,6 +55,16 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  // ── Close modals on Escape key ──────────────────────────────
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      var rdModal = document.getElementById("rdModal");
+      if (rdModal && rdModal.classList.contains("show")) {
+        closeModal();
+      }
+    }
+  });
+
   // ── Close modals on outside click ───────────────────────────
   window.addEventListener("click", function (event) {
     const rdModal = document.getElementById("rdModal");
@@ -759,7 +769,12 @@ function handleSearchEvent(data) {
   }
   else if (data.type === "done") {
     document.getElementById("progress-status").innerText = "Complete!";
-    document.getElementById("progress-detail").innerText = "Found " + data.total + " torrents.";
+    if (data.total === 0) {
+      document.getElementById("progress-detail").innerText =
+        "No torrents found. Try different keywords or check your indexer availability.";
+    } else {
+      document.getElementById("progress-detail").innerText = "Found " + data.total + " torrents.";
+    }
     document.getElementById("progress-bar").style.width = "100%";
 
     document.getElementById("stream-timer").style.display = "flex";
@@ -832,8 +847,15 @@ function appendStreamResult(torrent) {
     fCont.style.paddingBottom = "10px";
 
     var fInfo = document.createElement("div");
-    fInfo.innerHTML = "<strong>File:</strong> " + f["File Name"].replace(/[._]/g, " ") +
-      "<br><strong>Size:</strong> " + f["File Size"];
+    var fileLabel = document.createElement("strong");
+    fileLabel.textContent = "File: ";
+    fInfo.appendChild(fileLabel);
+    fInfo.appendChild(document.createTextNode(f["File Name"].replace(/[._]/g, " ")));
+    fInfo.appendChild(document.createElement("br"));
+    var sizeLabel = document.createElement("strong");
+    sizeLabel.textContent = "Size: ";
+    fInfo.appendChild(sizeLabel);
+    fInfo.appendChild(document.createTextNode(f["File Size"]));
     fCont.appendChild(fInfo);
 
     var acts = document.createElement("div");

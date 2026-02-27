@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Active search sessions (keyed by a simple ID) for cancellation
 _active_searches = {}
+_active_searches_lock = threading.Lock()
 
 
 @search_bp.route('/', methods=['GET', 'POST'])
@@ -87,31 +88,32 @@ def stream_search():
     Returns text/event-stream with JSON events.
     """
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return jsonify({"status": "error", "error": "Content-Type must be application/json"}), 400
 
     data = request.json
     query = (data.get("query") or "").strip()
     limit = data.get("limit", 10)
 
     if not query:
-        return jsonify({"error": "Query is required"}), 400
+        return jsonify({"status": "error", "error": "Query is required"}), 400
 
     try:
-        limit = int(limit)
+        limit = min(int(limit), 500)
         if limit < 1:
             raise ValueError
     except (ValueError, TypeError):
-        return jsonify({"error": "Limit must be a positive integer"}), 400
+        return jsonify({"status": "error", "error": "Limit must be a positive integer"}), 400
 
     api_key = current_app.config.get('REAL_DEBRID_API_KEY')
     if not api_key:
-        return jsonify({"error": "API key not configured"}), 500
+        return jsonify({"status": "error", "error": "API key not configured"}), 500
 
     # Create a cancel event for this search
     import uuid
     search_id = str(uuid.uuid4())[:8]
     cancel_event = threading.Event()
-    _active_searches[search_id] = cancel_event
+    with _active_searches_lock:
+        _active_searches[search_id] = cancel_event
 
     # Capture the app instance to use inside the generator thread
     app = current_app._get_current_object()
@@ -131,7 +133,8 @@ def stream_search():
                 logger.exception(f"Streaming search error: {e}")
                 yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred during search'})}\n\n"
             finally:
-                _active_searches.pop(search_id, None)
+                with _active_searches_lock:
+                    _active_searches.pop(search_id, None)
 
     return Response(
         generate(),
@@ -147,10 +150,11 @@ def stream_search():
 def cancel_search():
     """Cancel an active streaming search by its ID."""
     if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
+        return jsonify({"status": "error", "error": "Content-Type must be application/json"}), 400
 
     search_id = request.json.get("search_id")
-    cancel_event = _active_searches.get(search_id)
+    with _active_searches_lock:
+        cancel_event = _active_searches.get(search_id)
 
     if cancel_event:
         cancel_event.set()

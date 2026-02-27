@@ -4,7 +4,6 @@ import os
 import platform
 import shutil
 import subprocess
-import requests
 from app.services.real_debrid import RealDebridService, RealDebridError
 
 # Known install paths for VLC (per-platform)
@@ -60,19 +59,12 @@ def rd_manager():
 @torrent_bp.route('/delete_torrent/<torrent_id>', methods=['DELETE'])
 def delete_torrent(torrent_id):
     """Delete a single torrent from Real-Debrid by ID."""
-    REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
-    headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
-
     try:
-        response = requests.delete(
-            f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}', headers=headers
-        )
-        response.raise_for_status()
-        logger.info(f"Torrent with ID {torrent_id} deleted successfully.")
+        service = RealDebridService(api_key=current_app.config.get('REAL_DEBRID_API_KEY'))
+        service.delete_torrent(torrent_id)
         return jsonify({'status': 'success', 'message': 'Torrent deleted successfully'})
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error deleting torrent from Real-Debrid API: {e}")
+    except RealDebridError as e:
+        logger.error(f"Error deleting torrent {torrent_id}: {e}")
         return jsonify({'status': 'error', 'error': 'Failed to delete torrent'}), 500
 
 
@@ -90,18 +82,11 @@ def unrestrict_link():
     if not original_link or not api_key:
         return jsonify({'status': 'error', 'error': 'Missing link or API key'}), 400
 
-    headers = {'Authorization': f'Bearer {api_key}'}
-    payload = {'link': original_link}
-
     try:
-        response = requests.post(
-            'https://api.real-debrid.com/rest/1.0/unrestrict/link',
-            headers=headers, data=payload
-        )
-        response.raise_for_status()
-        unrestricted_data = response.json()
-        return jsonify({'unrestricted_link': unrestricted_data.get('download', 'Link not found')})
-    except requests.exceptions.RequestException as e:
+        service = RealDebridService(api_key=api_key)
+        download_url = service.unrestrict_link(original_link)
+        return jsonify({'unrestricted_link': download_url or 'Link not found'})
+    except RealDebridError as e:
         logger.error(f"Error in unrestrict_link: {e}")
         return jsonify({'status': 'error', 'error': 'Failed to unrestrict link'}), 500
 
@@ -109,16 +94,9 @@ def unrestrict_link():
 @torrent_bp.route('/torrents/<torrent_id>', methods=['GET'])
 def get_torrent_details(torrent_id):
     """Fetch and return file details for a specific torrent."""
-    REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
-    headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
-
     try:
-        response = requests.get(
-            f'https://api.real-debrid.com/rest/1.0/torrents/info/{torrent_id}',
-            headers=headers
-        )
-        response.raise_for_status()
-        torrent_data = response.json()
+        service = RealDebridService(api_key=current_app.config.get('REAL_DEBRID_API_KEY'))
+        torrent_data = service.get_torrent_info(torrent_id)
 
         files = torrent_data.get('files') or []
         links = torrent_data.get('links') or []
@@ -156,8 +134,8 @@ def get_torrent_details(torrent_id):
             "ended": torrent_data.get("ended")
         })
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error fetching torrent info from Real-Debrid API: {e}")
+    except RealDebridError as e:
+        logger.error(f"Error fetching torrent info: {e}")
         return jsonify({'status': 'error', 'error': 'Failed to retrieve torrent information'}), 500
     except Exception as e:
         logger.error(f"Unexpected error processing torrent {torrent_id}: {e}")
@@ -173,23 +151,18 @@ def delete_torrents():
     if not data:
         return jsonify({'status': 'error', 'error': 'Invalid or empty JSON body'}), 400
     torrent_ids = data.get('torrentIds', [])
-    REAL_DEBRID_API_KEY = current_app.config.get('REAL_DEBRID_API_KEY')
-    headers = {'Authorization': f'Bearer {REAL_DEBRID_API_KEY}'}
 
     if not torrent_ids:
         return jsonify({'status': 'error', 'error': 'No torrent IDs provided'}), 400
 
+    service = RealDebridService(api_key=current_app.config.get('REAL_DEBRID_API_KEY'))
     results = {'deleted': [], 'failed': []}
 
     for torrent_id in torrent_ids:
         try:
-            response = requests.delete(
-                f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}',
-                headers=headers
-            )
-            response.raise_for_status()
+            service.delete_torrent(torrent_id)
             results['deleted'].append(torrent_id)
-        except requests.exceptions.RequestException as e:
+        except RealDebridError as e:
             logger.error(f"Failed to delete torrent ID {torrent_id}: {e}")
             results['failed'].append(torrent_id)
 

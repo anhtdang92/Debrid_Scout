@@ -30,11 +30,17 @@ def _get_user_data():
     return current_app.extensions['user_data']
 
 
+def _safe_headers():
+    """Return request headers with sensitive values redacted."""
+    return {k: ('***' if k.lower() == 'authorization' else v)
+            for k, v in request.headers}
+
+
 @deovr_bp.before_request
 def check_auth_and_log():
     """Check optional auth token and log every request for debugging."""
     logger.info(f"[DEOVR-DEBUG] {request.method} {request.url}")
-    logger.info(f"[DEOVR-DEBUG] Headers: {dict(request.headers)}")
+    logger.info(f"[DEOVR-DEBUG] Headers: {_safe_headers()}")
     if request.data:
         logger.info(f"[DEOVR-DEBUG] Body: {request.data[:500]}")
 

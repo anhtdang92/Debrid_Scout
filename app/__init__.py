@@ -20,11 +20,9 @@ from .routes.deovr import deovr_bp
 # ── Cached account info with TTL ──────────────────────────────
 # Avoids hitting the RD API on every single page load.
 _account_cache = {"data": None, "error": None, "expires": 0}
-_CACHE_TTL = 300  # 5 minutes
-
-
 def _get_cached_account_info(app):
-    """Return cached RD account info, refreshing at most every _CACHE_TTL seconds."""
+    """Return cached RD account info, refreshing at most every ACCOUNT_CACHE_TTL seconds."""
+    cache_ttl = app.config.get('ACCOUNT_CACHE_TTL', 300)
     now = time.time()
     if _account_cache["expires"] > now:
         return _account_cache["data"], _account_cache["error"]
@@ -35,7 +33,7 @@ def _get_cached_account_info(app):
     if not api_key:
         _account_cache["data"] = None
         _account_cache["error"] = "Real-Debrid API key is not set."
-        _account_cache["expires"] = now + _CACHE_TTL
+        _account_cache["expires"] = now + cache_ttl
         return _account_cache["data"], _account_cache["error"]
 
     try:
@@ -47,7 +45,7 @@ def _get_cached_account_info(app):
         _account_cache["data"] = None
         _account_cache["error"] = str(e)
 
-    _account_cache["expires"] = now + _CACHE_TTL
+    _account_cache["expires"] = now + cache_ttl
     return _account_cache["data"], _account_cache["error"]
 
 
@@ -66,11 +64,19 @@ def create_app():
         app.logger.error("REAL_DEBRID_API_KEY is not set. Application cannot run without it.")
         raise RuntimeError("REAL_DEBRID_API_KEY is missing.")
 
+    if not app.config.get('JACKETT_API_KEY'):
+        app.logger.warning(
+            "JACKETT_API_KEY is not set — search functionality will not work."
+        )
+
     # Set a secret key for CSRF and sessions.
-    # WARNING: Without a stable SECRET_KEY env var, sessions and CSRF tokens
-    # are invalidated on every app restart.
     secret_key = os.getenv('SECRET_KEY')
     if not secret_key:
+        if environment == 'production':
+            raise RuntimeError(
+                "SECRET_KEY is required in production. "
+                "Set SECRET_KEY in your .env or environment variables."
+            )
         app.logger.warning(
             "SECRET_KEY is not set — using a random key. "
             "Sessions will be invalidated on restart. "
@@ -99,7 +105,8 @@ def create_app():
 
     # Set up logging with RotatingFileHandler
     log_file = os.path.join(log_directory, 'app.log')
-    file_handler = RotatingFileHandler(log_file, maxBytes=10240, backupCount=10)
+    log_max_bytes = app.config.get('LOG_MAX_BYTES', 10240)
+    file_handler = RotatingFileHandler(log_file, maxBytes=log_max_bytes, backupCount=10)
     file_handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter(
         '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
@@ -147,7 +154,11 @@ def create_app():
     from app.services.user_data import UserDataStore
     from app.services.thumbnail import ThumbnailService
     app.extensions['user_data'] = UserDataStore()
-    app.extensions['thumb_service'] = ThumbnailService()
+    thumb_service = ThumbnailService()
+    app.extensions['thumb_service'] = thumb_service
+
+    # Clean up expired thumbnails/previews on startup
+    thumb_service.cleanup(max_age_days=app.config.get('THUMBNAIL_MAX_AGE_DAYS', 7))
 
     # Register Blueprints
     app.register_blueprint(search_bp, url_prefix='/')

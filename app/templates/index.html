@@ -33,7 +33,7 @@
 </div>
 
 <!-- Streaming Progress Section -->
-<div id="search-progress" style="display:none; margin: 20px 0;">
+<div id="search-progress" role="status" aria-live="polite" style="display:none; margin: 20px 0;">
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
         <i class="fa-solid fa-spinner fa-spin" style="color: var(--accent);" id="progress-spinner"></i>
         <span id="progress-status" style="font-weight: 500;">Searching...</span>
@@ -45,7 +45,7 @@
 </div>
 
 <!-- Error message area -->
-<div id="search-error" class="error-message" style="display:none;">
+<div id="search-error" class="error-message" role="alert" aria-live="assertive" style="display:none;">
     <p id="search-error-text"></p>
 </div>
 
