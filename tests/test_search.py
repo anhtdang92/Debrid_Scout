@@ -142,3 +142,89 @@ def test_cancel_search_no_json(client, mocked_responses):
 
     response = client.post("/cancel", data="not json")
     assert response.status_code == 400
+
+
+# ── SSE Streaming Endpoint Tests ─────────────────────────────
+
+def test_stream_search_no_json(client, mocked_responses):
+    """Test that stream endpoint rejects non-JSON requests."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.post("/stream", data="not json")
+    assert response.status_code == 400
+    assert response.json["status"] == "error"
+
+
+def test_stream_search_empty_query(client, mocked_responses):
+    """Test that stream endpoint rejects empty query."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.post("/stream", json={"query": "", "limit": 10})
+    assert response.status_code == 400
+    assert "Query is required" in response.json["error"]
+
+
+def test_stream_search_invalid_limit(client, mocked_responses):
+    """Test that stream endpoint rejects invalid limit."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.post("/stream", json={"query": "test", "limit": "abc"})
+    assert response.status_code == 400
+    assert "positive integer" in response.json["error"]
+
+
+def test_stream_search_negative_limit(client, mocked_responses):
+    """Test that stream endpoint rejects negative limit."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.post("/stream", json={"query": "test", "limit": -5})
+    assert response.status_code == 400
+
+
+def test_stream_search_returns_event_stream(client, mocked_responses):
+    """Test that valid stream request returns text/event-stream."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+
+    with patch('app.routes.search.RDDownloadLinkService') as MockService:
+        # Simulate a generator that yields a done event
+        def mock_stream(query, limit, cancel_event=None):
+            yield {"type": "progress", "stage": "Searching...", "detail": "", "current": 0, "total": 0}
+            yield {"type": "done", "total": 0, "elapsed": "0.50"}
+
+        MockService.return_value.search_and_get_links_stream = mock_stream
+
+        response = client.post("/stream", json={"query": "test movie", "limit": 10})
+        assert response.status_code == 200
+        assert response.content_type.startswith("text/event-stream")
+
+        # Parse the SSE events from the response
+        data = response.get_data(as_text=True)
+        events = [line for line in data.split("\n") if line.startswith("data: ")]
+
+        # Should have at least: search_id, progress, done
+        assert len(events) >= 2
+
+        # First event should be the search_id
+        first = json.loads(events[0].replace("data: ", ""))
+        assert first["type"] == "search_id"
+
+        # Last event should be done
+        last = json.loads(events[-1].replace("data: ", ""))
+        assert last["type"] == "done"
+        assert last["total"] == 0
