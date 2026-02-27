@@ -142,6 +142,33 @@ def find_heresphere_exe():
     return shutil.which("HereSphere") or shutil.which("HereSphere.exe")
 
 
+def build_restricted_map(selected_files, links):
+    """Build file-ID → restricted-link mapping by positional correspondence.
+
+    RD returns links[] in the same order as selected (filtered) files.
+    Returns dict mapping file_id → restricted_link.
+    """
+    restricted_map = {}
+    for i, f in enumerate(selected_files):
+        fid = f.get('id')
+        if fid is not None and i < len(links):
+            restricted_map[fid] = links[i]
+    return restricted_map
+
+
+def get_video_files(selected_files):
+    """Filter selected torrent files to only video files.
+
+    Returns list of file dicts whose path ends with a video extension.
+    """
+    video_files = []
+    for f in selected_files:
+        fname = f.get('path', '').split('/')[-1]
+        if is_video(fname):
+            video_files.append(f)
+    return video_files
+
+
 def launch_heresphere_exe(video_url):
     """
     Launch HereSphere.exe with the given video URL.

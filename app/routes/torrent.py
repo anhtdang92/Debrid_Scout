@@ -5,6 +5,7 @@ import platform
 import shutil
 import subprocess
 from app.services.real_debrid import RealDebridService, RealDebridError
+from app.services.vr_helper import build_restricted_map
 
 # Known install paths for VLC (per-platform)
 _VLC_PATHS_BY_OS = {
@@ -105,11 +106,7 @@ def get_torrent_details(torrent_id):
         # Map selected files to their restricted links (do NOT unrestrict here —
         # that's slow and blocks the browser).  The frontend will call
         # /torrent/unrestrict_link on-demand when the user clicks Download.
-        link_mapping = {}
-        for f, link in zip(selected_files, links):
-            fid = f.get('id')
-            if fid is not None and link:
-                link_mapping[fid] = link
+        link_mapping = build_restricted_map(selected_files, links)
 
         sorted_files = sorted(selected_files, key=lambda f: f.get('bytes', 0), reverse=True)
 

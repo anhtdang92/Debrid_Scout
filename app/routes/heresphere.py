@@ -30,6 +30,7 @@ from app.services.real_debrid import RealDebridService, RealDebridError
 from app.services.file_helper import FileHelper
 from app.services.vr_helper import (
     is_video, is_subtitle, guess_projection, launch_heresphere_exe,
+    build_restricted_map, get_video_files,
 )
 
 heresphere_bp = Blueprint('heresphere', __name__)
@@ -417,11 +418,7 @@ def video_detail(torrent_id):
     selected_files = [f for f in files if f.get('selected') == 1]
 
     # Count video files and total size for metadata
-    video_files = []
-    for f in selected_files:
-        fname = f.get('path', '').split('/')[-1]
-        if is_video(fname):
-            video_files.append(f)
+    video_files = get_video_files(selected_files)
 
     total_bytes = sum(f.get('bytes', 0) for f in video_files)
 
@@ -495,12 +492,7 @@ def video_detail(torrent_id):
 
     # ── Full response with playable sources ───────────────────
     # Build file-ID → restricted-link mapping using positional correspondence
-    # (RD returns links[] in the same order as selected files)
-    restricted_map = {}
-    for i, f in enumerate(selected_files):
-        fid = f.get('id')
-        if fid is not None and i < len(links):
-            restricted_map[fid] = links[i]
+    restricted_map = build_restricted_map(selected_files, links)
 
     # Only unrestrict links for video files (skip non-video to avoid
     # wasting API calls and 0.2s rate-limit delays per link)
@@ -587,11 +579,7 @@ def _get_direct_video_url(torrent_id):
     selected = [f for f in files if f.get('selected') == 1]
 
     # Build file-ID → restricted-link mapping by position
-    restricted_map = {}
-    for i, f in enumerate(selected):
-        fid = f.get('id')
-        if fid is not None and i < len(links):
-            restricted_map[fid] = links[i]
+    restricted_map = build_restricted_map(selected, links)
 
     # Find the largest video file that has a link
     sorted_files = sorted(selected, key=lambda f: f.get('bytes', 0), reverse=True)

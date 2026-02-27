@@ -19,6 +19,7 @@ from app.services.real_debrid import RealDebridService, RealDebridError
 from app.services.file_helper import FileHelper
 from app.services.vr_helper import (
     is_video, guess_projection_deovr, launch_heresphere_exe,
+    build_restricted_map,
 )
 from app.routes.heresphere import _get_torrent_info_cached, _get_thumb_service
 
@@ -174,11 +175,7 @@ def video_detail(torrent_id):
     selected_files = [f for f in files if f.get('selected') == 1]
 
     # Build file-ID → restricted-link mapping by position
-    restricted_map = {}
-    for i, f in enumerate(selected_files):
-        fid = f.get('id')
-        if fid is not None and i < len(links):
-            restricted_map[fid] = links[i]
+    restricted_map = build_restricted_map(selected_files, links)
 
     # Sort by size descending, filter to video files only
     sorted_files = sorted(selected_files, key=lambda f: f.get('bytes', 0), reverse=True)

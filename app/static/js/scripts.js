@@ -60,7 +60,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (event.key === "Escape") {
       var rdModal = document.getElementById("rdModal");
       if (rdModal && rdModal.classList.contains("show")) {
-        closeModal();
+        window.closeModal();
       }
     }
   });
@@ -69,11 +69,11 @@ document.addEventListener("DOMContentLoaded", function () {
   window.addEventListener("click", function (event) {
     const rdModal = document.getElementById("rdModal");
     if (rdModal && rdModal.classList.contains("show") && event.target === rdModal) {
-      closeModal();
+      window.closeModal();
     }
     document.querySelectorAll(".rd-modal").forEach(function (modal) {
       if (modal.classList.contains("show") && event.target === modal) {
-        closeIndexModal(modal.id);
+        window.closeIndexModal(modal.id);
       }
     });
   });
@@ -216,7 +216,7 @@ document.addEventListener("DOMContentLoaded", function () {
         break;
 
       case "close-modal":
-        closeIndexModal(id);
+        window.closeIndexModal(id);
         break;
 
       case "show-files":

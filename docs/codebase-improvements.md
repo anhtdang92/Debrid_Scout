@@ -85,7 +85,7 @@ No `.github/workflows/` directory exists. Tests, linting, and security scanning 
 
 ---
 
-### 9. Add Missing Service Layer Tests
+### 9. Add Missing Service Layer Tests ✅
 Zero test coverage for:
 - `RDCachedLinkService` — cache-checking pipeline
 - `RDDownloadLinkService` — full download orchestration
@@ -95,7 +95,7 @@ Zero test coverage for:
 
 ---
 
-### 10. Add SSE Streaming Endpoint Tests
+### 10. Add SSE Streaming Endpoint Tests ✅
 `tests/test_search.py` has no tests for `POST /stream` — the primary search endpoint.
 
 **Fix:** Test SSE event format, cancellation, error responses, malformed JSON body.
@@ -109,7 +109,7 @@ Zero test coverage for:
 
 ---
 
-### 12. Extract Duplicate Code Between Routes
+### 12. Extract Duplicate Code Between Routes ✅
 File-to-link mapping, video file filtering, and projection detection are duplicated across `heresphere.py`, `deovr.py`, and `torrent.py`.
 
 **Duplicated patterns:**
@@ -142,7 +142,7 @@ HEALTHCHECK --interval=30s --timeout=5s \
 
 ---
 
-### 15. Refactor `search_and_get_links` / `search_and_get_links_stream` Duplication
+### 15. Refactor `search_and_get_links` / `search_and_get_links_stream` Duplication ✅
 `rd_download_link.py` has two 140+ line methods (`search_and_get_links` at line 48 and `search_and_get_links_stream` at line 253) that share ~95% of logic. Only difference is SSE yields vs. return dict.
 
 **Fix:** Extract shared pipeline into `_process_pipeline()` that yields results; sync method collects into list, streaming method yields SSE events.
@@ -238,7 +238,7 @@ Cached thumbnails and previews never expire. Disk usage grows unbounded.
 
 ---
 
-### 27. Improve ESLint Configuration
+### 27. Improve ESLint Configuration ✅
 `eslint.config.mjs` only sets `globals.browser` — no rules, no error detection, no unused variable checks.
 
 **Fix:** Add recommended ruleset and Prettier integration.
@@ -254,7 +254,7 @@ No `mypy` or `pyright` configured. Type hints are partial (services have some, r
 
 ---
 
-### 29. Fill In CHANGELOG.md
+### 29. Fill In CHANGELOG.md ✅
 `CHANGELOG.md:5-26` has version headers from `standard-version` but no actual change descriptions.
 
 **Fix:** Populate with features/fixes from git history.
@@ -295,7 +295,7 @@ HereSphere and RD Manager pages show no visual feedback while API data loads. Ad
 
 ---
 
-### 36. Add Account Route Smoke Test
+### 36. Add Account Route Smoke Test ✅
 `/account/account` has zero test coverage. Add a basic render test.
 
 ---
@@ -314,9 +314,9 @@ HereSphere and RD Manager pages show no visual feedback while API data loads. Ad
 | Priority | Count | Completed | Theme |
 |----------|-------|-----------|-------|
 | P0 Critical | 7 | 7 ✅ | Timeouts, auth bypass, XSS, Docker security |
-| P1 High | 10 | 6 | CI/CD, connection pooling, rate limiting, error format |
-| P2 Medium | 10 | 9 | Accessibility, validation, caching, config |
-| P3 Polish | 10 | 3 | Color contrast, session cleanup, error logging |
-| **Total** | **37** | **25** | |
+| P1 High | 10 | 10 ✅ | CI/CD, connection pooling, rate limiting, error format |
+| P2 Medium | 10 | 10 ✅ | Accessibility, validation, caching, config |
+| P3 Polish | 10 | 4 | Color contrast, session cleanup, error logging |
+| **Total** | **37** | **31** | |
 
-**Remaining items (12):** #9 (service tests), #10 (SSE tests), #12 (extract duplicate code), #15 (refactor search duplication), #27 (ESLint config), #28 (type checking), #29 (changelog), #31 (CSS specificity), #32 (responsive breakpoint), #33 (loading skeletons), #34 (bencodepy alternative), #36 (account route test).
+**Remaining items (6):** #28 (type checking), #31 (CSS specificity), #32 (responsive breakpoint), #33 (loading skeletons), #34 (bencodepy alternative).
