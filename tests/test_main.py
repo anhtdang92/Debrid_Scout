@@ -160,6 +160,20 @@ def test_get_torrent_details_route(client, mocked_responses):
     assert response.json['files'][0]['link'] == "https://download.real-debrid.com/d/abc123/Test.Movie.2024.mkv"
 
 
+# ── Account route smoke test ──────────────────────────────────
+
+def test_account_route(client, mocked_responses):
+    """Test that /account/account renders without error."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser", "expiration": "2030-01-01T00:00:00.000Z", "premium": 100},
+        status=200,
+    )
+    response = client.get("/account/account")
+    assert response.status_code == 200
+    assert b"testuser" in response.data
+
+
 # ── HereSphere scan endpoint tests ───────────────────────────
 
 def test_heresphere_library_includes_scan_url(client, mocked_responses):
