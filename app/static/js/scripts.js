@@ -664,6 +664,8 @@ function toggleSelectAll(selectAllCheckbox) {
 
 var currentSearchId = null;
 var collectedResults = [];
+var _pendingStreamResults = [];
+var _rafScheduled = false;
 
 function startStreamingSearch() {
   // Clear previous saved results
@@ -765,9 +767,15 @@ function handleSearchEvent(data) {
   }
   else if (data.type === "result") {
     collectedResults.push(data.torrent);
-    appendStreamResult(data.torrent);
+    _pendingStreamResults.push(data.torrent);
+    if (!_rafScheduled) {
+      _rafScheduled = true;
+      requestAnimationFrame(flushPendingResults);
+    }
   }
   else if (data.type === "done") {
+    // Flush any remaining batched results before finalizing
+    flushPendingResults();
     document.getElementById("progress-status").innerText = "Complete!";
     if (data.total === 0) {
       document.getElementById("progress-detail").innerText =
@@ -809,10 +817,24 @@ function handleSearchEvent(data) {
   }
 }
 
-function appendStreamResult(torrent) {
+function flushPendingResults() {
+  _rafScheduled = false;
+  var batch = _pendingStreamResults.splice(0);
+  if (!batch.length) return;
   var tbody = document.getElementById("stream-results-body");
   if (!tbody) return;
+  var frag = document.createDocumentFragment();
+  for (var i = 0; i < batch.length; i++) {
+    frag.appendChild(buildStreamResultRow(batch[i]));
+  }
+  tbody.appendChild(frag);
+  var countEl = document.getElementById("stream-total");
+  if (countEl) {
+    countEl.innerText = tbody.querySelectorAll("tr").length;
+  }
+}
 
+function buildStreamResultRow(torrent) {
   var tr = document.createElement("tr");
 
   // Format file name
@@ -891,9 +913,13 @@ function appendStreamResult(torrent) {
 
   tdFiles.appendChild(filesDiv);
   tr.appendChild(tdFiles);
-  tbody.appendChild(tr);
+  return tr;
+}
 
-  // Update total count
+function appendStreamResult(torrent) {
+  var tbody = document.getElementById("stream-results-body");
+  if (!tbody) return;
+  tbody.appendChild(buildStreamResultRow(torrent));
   var countEl = document.getElementById("stream-total");
   if (countEl) {
     countEl.innerText = tbody.querySelectorAll("tr").length;
@@ -1127,18 +1153,20 @@ document.addEventListener("DOMContentLoaded", function () {
       return b;
     }
 
-    paginationEl.appendChild(btn("\u00AB", 1, false, currentPage === 1));
-    paginationEl.appendChild(btn("\u2039", currentPage - 1, false, currentPage === 1));
+    var frag = document.createDocumentFragment();
+    frag.appendChild(btn("\u00AB", 1, false, currentPage === 1));
+    frag.appendChild(btn("\u2039", currentPage - 1, false, currentPage === 1));
 
     var lo = Math.max(1, currentPage - 3);
     var hi = Math.min(totalPages, lo + 6);
     lo = Math.max(1, hi - 6);
     for (var p = lo; p <= hi; p++) {
-      paginationEl.appendChild(btn(String(p), p, p === currentPage, false));
+      frag.appendChild(btn(String(p), p, p === currentPage, false));
     }
 
-    paginationEl.appendChild(btn("\u203A", currentPage + 1, false, currentPage === totalPages));
-    paginationEl.appendChild(btn("\u00BB", totalPages, false, currentPage === totalPages));
+    frag.appendChild(btn("\u203A", currentPage + 1, false, currentPage === totalPages));
+    frag.appendChild(btn("\u00BB", totalPages, false, currentPage === totalPages));
+    paginationEl.appendChild(frag);
   }
 
   function applyFilter() {
@@ -1170,7 +1198,9 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    cards.forEach(function (card) { grid.appendChild(card); });
+    var sortFrag = document.createDocumentFragment();
+    cards.forEach(function (card) { sortFrag.appendChild(card); });
+    grid.appendChild(sortFrag);
     if (sortSelect) localStorage.setItem(HS_SORT_KEY, value);
     applyPagination();
   }

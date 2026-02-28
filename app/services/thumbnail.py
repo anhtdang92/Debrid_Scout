@@ -50,6 +50,14 @@ class ThumbnailService:
         """True if ffmpeg is installed on this system."""
         return self._ffmpeg is not None
 
+    def _get_timeout(self, key: str, default: int) -> int:
+        """Read a timeout from Flask config, falling back to default."""
+        try:
+            from flask import current_app
+            return current_app.config.get(key, default)
+        except RuntimeError:
+            return default
+
     # ── Duration metadata ──────────────────────────────────────
 
     def _meta_path(self, torrent_id: str) -> str:
@@ -91,7 +99,7 @@ class ThumbnailService:
                     video_url,
                 ],
                 capture_output=True,
-                timeout=15,
+                timeout=self._get_timeout('FFPROBE_TIMEOUT', 15),
             )
             if result.returncode != 0:
                 return 0
@@ -151,7 +159,7 @@ class ThumbnailService:
                     output_path,
                 ],
                 capture_output=True,
-                timeout=30,
+                timeout=self._get_timeout('FFMPEG_THUMB_TIMEOUT', 30),
             )
 
             if result.returncode == 0 and os.path.isfile(output_path):
@@ -254,7 +262,7 @@ class ThumbnailService:
                     output_path,
                 ],
                 capture_output=True,
-                timeout=60,
+                timeout=self._get_timeout('FFMPEG_PREVIEW_TIMEOUT', 60),
             )
 
             if result.returncode == 0 and os.path.isfile(output_path):

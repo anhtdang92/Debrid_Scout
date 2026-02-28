@@ -10,9 +10,10 @@ with only video files included.
 
 import time
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any, Tuple
 
-import requests
 from flask import current_app
 
 from app.services.rd_cached_link import RDCachedLinkService
@@ -51,6 +52,9 @@ class RDDownloadLinkService:
         """
         Run the full search pipeline and return structured results.
 
+        Uses ThreadPoolExecutor to process torrents concurrently for faster
+        magnet addition, file selection, and link unrestriction.
+
         Returns dict with keys:
             data: list of torrent result dicts (each with Torrent Name, Categories, Files)
             timers: list of {script, time} dicts for each pipeline stage
@@ -64,15 +68,48 @@ class RDDownloadLinkService:
         )
         logger.info(f"Pipeline: {len(cached_links)} cached links from RDCachedLinkService.")
 
-        # 2. Build existing-hash lookup and process each cached result
+        # 2. Build existing-hash lookup
         existing_hashes = self._fetch_existing_hashes()
-        processed_infohashes = set()
-        final_output = []
 
-        for cached_link in cached_links:
-            result = self._process_torrent(cached_link, existing_hashes, processed_infohashes)
-            if result:
-                final_output.append(result)
+        # 3. Pre-dedup by infohash so each worker handles a unique torrent
+        seen_hashes: set = set()
+        unique_links: List[Dict] = []
+        for cl in cached_links:
+            ih = cl.get('infohash')
+            if ih and ih not in seen_hashes and cl.get('magnet_link'):
+                seen_hashes.add(ih)
+                unique_links.append(cl)
+
+        # 4. Process torrents concurrently
+        try:
+            max_workers = current_app.config.get('RD_MAX_WORKERS', 4)
+        except RuntimeError:
+            max_workers = 4
+
+        app = current_app._get_current_object()
+        shared_lock = threading.Lock()
+        processed_infohashes: set = set()
+        final_output: List[Dict] = []
+
+        def _process_one(cached_link: Dict) -> Optional[Dict]:
+            with app.app_context():
+                return self._process_torrent(
+                    cached_link, existing_hashes, processed_infohashes, shared_lock
+                )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_process_one, cl): cl for cl in unique_links}
+            for future in as_completed(futures):
+                try:
+                    result = future.result(timeout=120)
+                    if result:
+                        final_output.append(result)
+                except TimeoutError:
+                    cl = futures[future]
+                    logger.error(f"Worker timed out for '{cl.get('title', '?')}'")
+                except Exception as e:
+                    cl = futures[future]
+                    logger.error(f"Concurrent processing error for '{cl.get('title', '?')}': {e}")
 
         overall_elapsed = time.perf_counter() - overall_start
 
@@ -179,8 +216,20 @@ class RDDownloadLinkService:
     _DEAD_STATUSES = frozenset(('error', 'magnet_error', 'virus', 'dead'))
 
     # Max retries when waiting for a cached torrent to reach "downloaded".
-    _STATUS_RETRIES = 3
-    _STATUS_RETRY_DELAY = 1  # seconds
+    # Read from config at runtime via properties.
+    @property
+    def _STATUS_RETRIES(self):
+        try:
+            return current_app.config.get('RD_STATUS_RETRIES', 3)
+        except RuntimeError:
+            return 3
+
+    @property
+    def _STATUS_RETRY_DELAY(self):
+        try:
+            return current_app.config.get('RD_STATUS_RETRY_DELAY', 1)
+        except RuntimeError:
+            return 1
 
     def _fetch_existing_hashes(self) -> Dict[str, str]:
         """Build a hash→ID lookup of the user's existing RD torrents.
@@ -202,21 +251,30 @@ class RDDownloadLinkService:
         cached_link: Dict[str, Any],
         existing_hashes: Dict[str, str],
         processed_infohashes: set,
+        lock: Optional[threading.Lock] = None,
     ) -> Optional[Dict[str, Any]]:
         """Process a single cached torrent through the full pipeline.
 
         Adds/reuses magnet, selects video files, unrestricts links.
         Returns a result dict or None if the torrent was skipped or failed.
+
+        When called from ThreadPoolExecutor, pass a lock to protect shared state.
         """
         torrent_name = cached_link.get('title', 'Unknown Title')
         categories = cached_link.get('categories', [])
         magnet_link = cached_link.get('magnet_link')
         infohash = cached_link.get('infohash')
 
-        if not magnet_link or infohash in processed_infohashes:
-            return None
+        if lock:
+            with lock:
+                if not magnet_link or infohash in processed_infohashes:
+                    return None
+                processed_infohashes.add(infohash)
+        else:
+            if not magnet_link or infohash in processed_infohashes:
+                return None
+            processed_infohashes.add(infohash)
 
-        processed_infohashes.add(infohash)
         infohash_lower = infohash.lower() if infohash else None
 
         try:
@@ -343,11 +401,7 @@ class RDDownloadLinkService:
     def _try_delete_torrent(self, torrent_id: str):
         """Best-effort cleanup of a torrent entry that failed to process."""
         try:
-            requests.delete(
-                f'https://api.real-debrid.com/rest/1.0/torrents/delete/{torrent_id}',
-                headers={'Authorization': f'Bearer {self.api_key}'},
-                timeout=(5, 15),
-            )
+            self.rd_service.delete_torrent(torrent_id)
             logger.debug(f"Cleaned up failed torrent entry {torrent_id}")
         except Exception as e:
             logger.warning(f"Failed to clean up torrent {torrent_id}: {e}")

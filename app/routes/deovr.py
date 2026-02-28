@@ -21,7 +21,14 @@ from app.services.vr_helper import (
     is_video, guess_projection_deovr, launch_heresphere_exe,
     build_restricted_map,
 )
-from app.routes.heresphere import _get_torrent_info_cached, _get_thumb_service
+from app.services.rd_cache import (
+    get_torrent_info_cached, get_all_torrents_cached, batch_unrestrict,
+)
+
+
+def _get_thumb_service():
+    """Return the shared ThumbnailService from app extensions."""
+    return current_app.extensions['thumb_service']
 
 deovr_bp = Blueprint('deovr', __name__)
 logger = logging.getLogger(__name__)
@@ -73,7 +80,7 @@ def library_index():
 
     try:
         service = RealDebridService(api_key=api_key)
-        torrents = service.get_all_torrents()
+        torrents = get_all_torrents_cached(service)
     except RealDebridError as e:
         logger.error(f"Failed to fetch torrents for DeoVR library: {e}")
         return jsonify({"status": "error", "error": "Failed to fetch torrent library from Real-Debrid"}), 500
@@ -144,7 +151,7 @@ def video_detail(torrent_id):
     service = RealDebridService(api_key=api_key)
 
     try:
-        torrent_data = _get_torrent_info_cached(service, torrent_id)
+        torrent_data = get_torrent_info_cached(service, torrent_id)
     except RealDebridError as e:
         logger.error(f"DeoVR: failed to fetch torrent {torrent_id}: {e}")
         return jsonify({"status": "error", "error": "Failed to fetch torrent info"}), 500
@@ -180,27 +187,18 @@ def video_detail(torrent_id):
     # Sort by size descending, filter to video files only
     sorted_files = sorted(selected_files, key=lambda f: f.get('bytes', 0), reverse=True)
 
-    # Only unrestrict video file links (skip non-video)
-    video_sources = []
-    for f in sorted_files:
-        fname = f.get('path', '').split('/')[-1]
-        if not is_video(fname):
-            continue
+    # Only unrestrict video file links (skip non-video) — batch for concurrency
+    video_files_sorted = [
+        f for f in sorted_files
+        if is_video(f.get('path', '').split('/')[-1]) and restricted_map.get(f.get('id'))
+    ]
+    restricted_links = [restricted_map[f.get('id')] for f in video_files_sorted]
+    unrestricted_links = batch_unrestrict(service, restricted_links)
 
-        fid = f.get('id')
-        restricted_link = restricted_map.get(fid)
-        if not restricted_link:
-            continue
-
-        try:
-            url = service.unrestrict_link(restricted_link)
-        except RealDebridError:
-            url = restricted_link
-
-        video_sources.append({
-            "resolution": 0,
-            "url": url,
-        })
+    video_sources = [
+        {"resolution": 0, "url": url}
+        for url in unrestricted_links
+    ]
 
     if not video_sources:
         return jsonify({"status": "error", "error": "No playable video files found in this torrent"}), 404

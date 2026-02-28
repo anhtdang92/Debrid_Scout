@@ -276,3 +276,174 @@ def test_heresphere_scan_has_correct_header(client, mocked_responses):
         mock_torrents.return_value = []
         response = client.post("/heresphere/scan")
         assert response.headers.get('HereSphere-JSON-Version') == '1'
+
+
+# ── /health endpoint tests ─────────────────────────────────────
+def test_health_endpoint_returns_healthy(client, mocked_responses):
+    """GET /health returns 200 with healthy status when keys are set."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["status"] == "healthy"
+    assert body["checks"]["api_key_set"] is True
+    assert body["checks"]["jackett_key_set"] is True
+
+
+def test_health_endpoint_degraded_without_jackett(client, mocked_responses):
+    """GET /health returns degraded when JACKETT_API_KEY is missing."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    client.application.config['JACKETT_API_KEY'] = ''
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["status"] == "degraded"
+    assert body["checks"]["jackett_key_set"] is False
+
+
+# ── Bulk delete validation tests ────────────────────────────────
+def test_bulk_delete_rejects_non_list(client, mocked_responses):
+    """POST /torrent/delete_torrents rejects non-list torrentIds."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.post(
+        "/torrent/delete_torrents",
+        json={"torrentIds": "not-a-list"},
+        content_type="application/json",
+    )
+    assert response.status_code == 400
+
+
+def test_bulk_delete_rejects_invalid_ids(client, mocked_responses):
+    """POST /torrent/delete_torrents rejects IDs with special characters."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.post(
+        "/torrent/delete_torrents",
+        json={"torrentIds": ["valid123", "../etc/passwd"]},
+        content_type="application/json",
+    )
+    assert response.status_code == 400
+    body = response.get_json()
+    assert "Invalid torrent ID" in body["error"]
+
+
+def test_bulk_delete_rejects_oversized_array(client, mocked_responses):
+    """POST /torrent/delete_torrents rejects arrays larger than 500."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.post(
+        "/torrent/delete_torrents",
+        json={"torrentIds": ["id" + str(i) for i in range(501)]},
+        content_type="application/json",
+    )
+    assert response.status_code == 400
+
+
+# ── VR auth token tests ────────────────────────────────────────
+def test_heresphere_auth_rejects_bad_token(client, mocked_responses):
+    """HereSphere API rejects requests with wrong auth token."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    client.application.config['HERESPHERE_AUTH_TOKEN'] = 'secret-token'
+    response = client.post(
+        "/heresphere",
+        headers={"Authorization": "Bearer wrong-token"},
+    )
+    assert response.status_code == 401
+
+
+def test_heresphere_auth_allows_correct_token(client, mocked_responses):
+    """HereSphere API allows requests with correct auth token."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    client.application.config['HERESPHERE_AUTH_TOKEN'] = 'secret-token'
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock_torrents:
+        mock_torrents.return_value = []
+        response = client.post(
+            "/heresphere",
+            headers={"Authorization": "Bearer secret-token"},
+        )
+        assert response.status_code == 200
+
+
+def test_deovr_auth_rejects_bad_token(client, mocked_responses):
+    """DeoVR API rejects requests with wrong auth token."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    client.application.config['HERESPHERE_AUTH_TOKEN'] = 'secret-token'
+    response = client.post(
+        "/deovr",
+        headers={"Authorization": "Bearer wrong-token"},
+    )
+    assert response.status_code == 401
+
+
+# ── Security headers test ──────────────────────────────────────
+def test_responses_include_security_headers(client, mocked_responses):
+    """All responses include CSP and X-Content-Type-Options headers."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.get("/health")
+    assert response.headers.get('X-Content-Type-Options') == 'nosniff'
+    assert response.headers.get('X-Frame-Options') == 'SAMEORIGIN'
+    assert 'Content-Security-Policy' in response.headers
+
+
+# ── Error path tests ───────────────────────────────────────────
+def test_unrestrict_link_rejects_missing_link(client, mocked_responses):
+    """POST /torrent/unrestrict_link returns 400 when link is missing."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.post(
+        "/torrent/unrestrict_link",
+        json={"not_link": "value"},
+        content_type="application/json",
+    )
+    assert response.status_code == 400
+
+
+def test_delete_torrent_handles_api_error(client, mocked_responses):
+    """DELETE /torrent/delete_torrent returns 500 on RD API error."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.delete_torrent') as mock_del:
+        from app.services.real_debrid import RealDebridError
+        mock_del.side_effect = RealDebridError("API error")
+        response = client.delete("/torrent/delete_torrent/abc123")
+        assert response.status_code == 500

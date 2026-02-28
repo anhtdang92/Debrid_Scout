@@ -32,9 +32,13 @@ from app.services.vr_helper import (
     is_video, is_subtitle, guess_projection, launch_heresphere_exe,
     build_restricted_map, get_video_files,
 )
+from app.services.rd_cache import (
+    get_torrent_info_cached, get_all_torrents_cached, batch_unrestrict,
+)
 
 heresphere_bp = Blueprint('heresphere', __name__)
 logger = logging.getLogger(__name__)
+
 
 def _get_thumb_service():
     """Return the shared ThumbnailService from app extensions."""
@@ -44,25 +48,6 @@ def _get_thumb_service():
 def _get_user_data():
     """Return the shared UserDataStore from app extensions."""
     return current_app.extensions['user_data']
-
-
-# ── Torrent info cache (TTL = 5 minutes) ────────────────────
-_torrent_cache = {}
-_torrent_cache_lock = threading.Lock()
-_TORRENT_CACHE_TTL = 300
-
-
-def _get_torrent_info_cached(service, torrent_id):
-    """Fetch torrent info via RealDebridService with a short TTL cache."""
-    now = time.time()
-    with _torrent_cache_lock:
-        cached = _torrent_cache.get(torrent_id)
-        if cached and (now - cached['ts']) < _TORRENT_CACHE_TTL:
-            return cached['data']
-    data = service.get_torrent_info(torrent_id)
-    with _torrent_cache_lock:
-        _torrent_cache[torrent_id] = {'data': data, 'ts': now}
-    return data
 
 
 def _safe_headers():
@@ -257,7 +242,7 @@ def library_index():
 
     try:
         service = RealDebridService(api_key=api_key)
-        torrents = service.get_all_torrents()
+        torrents = get_all_torrents_cached(service)
     except RealDebridError as e:
         logger.error(f"Failed to fetch torrents for HereSphere library: {e}")
         if _wants_html():
@@ -363,7 +348,7 @@ def scan():
 
     try:
         service = RealDebridService(api_key=api_key)
-        torrents = service.get_all_torrents()
+        torrents = get_all_torrents_cached(service)
     except RealDebridError as e:
         logger.error(f"HereSphere scan: failed to fetch torrents: {e}")
         return jsonify([]), 500
@@ -407,7 +392,7 @@ def video_detail(torrent_id):
     service = RealDebridService(api_key=api_key)
 
     try:
-        torrent_data = _get_torrent_info_cached(service, torrent_id)
+        torrent_data = get_torrent_info_cached(service, torrent_id)
     except RealDebridError as e:
         logger.error(f"HereSphere: failed to fetch torrent {torrent_id}: {e}")
         return jsonify({"status": "error", "error": "Failed to fetch torrent info"}), 500
@@ -497,33 +482,29 @@ def video_detail(torrent_id):
     # Only unrestrict links for video files (skip non-video to avoid
     # wasting API calls and 0.2s rate-limit delays per link)
     video_file_ids = {f.get('id') for f in video_files}
-    link_map = {}
-    for fid, restricted_link in restricted_map.items():
-        if fid not in video_file_ids:
-            continue
-        try:
-            link_map[fid] = service.unrestrict_link(restricted_link)
-        except RealDebridError:
-            link_map[fid] = restricted_link
+    video_fids = [fid for fid in restricted_map if fid in video_file_ids]
+    video_restricted = [restricted_map[fid] for fid in video_fids]
+    video_unrestricted = batch_unrestrict(service, video_restricted)
+    link_map = dict(zip(video_fids, video_unrestricted))
 
     # Detect and unrestrict subtitle files
+    sub_files = [
+        f for f in selected_files
+        if is_subtitle(f.get('path', '').split('/')[-1]) and f.get('id') in restricted_map
+    ]
+    sub_restricted = [restricted_map[f.get('id')] for f in sub_files]
+    sub_unrestricted = batch_unrestrict(service, sub_restricted)
+
     subtitle_entries = []
-    for f in selected_files:
+    for f, sub_url in zip(sub_files, sub_unrestricted):
         fname = f.get('path', '').split('/')[-1]
-        fid = f.get('id')
-        if is_subtitle(fname) and fid in restricted_map:
-            try:
-                sub_url = service.unrestrict_link(restricted_map[fid])
-            except RealDebridError:
-                sub_url = restricted_map[fid]
-            # Determine format from extension
-            ext = os.path.splitext(fname)[1].lower().lstrip('.')
-            subtitle_entries.append({
-                "name": fname,
-                "url": sub_url,
-                "language": "en",
-                "format": ext,
-            })
+        ext = os.path.splitext(fname)[1].lower().lstrip('.')
+        subtitle_entries.append({
+            "name": fname,
+            "url": sub_url,
+            "language": "en",
+            "format": ext,
+        })
     if subtitle_entries:
         base_response["subtitles"] = subtitle_entries
 
@@ -570,7 +551,7 @@ def _get_direct_video_url(torrent_id):
 
     try:
         service = RealDebridService(api_key=api_key)
-        torrent_data = _get_torrent_info_cached(service, torrent_id)
+        torrent_data = get_torrent_info_cached(service, torrent_id)
     except RealDebridError:
         return None
 

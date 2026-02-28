@@ -4,6 +4,7 @@ from logging.handlers import RotatingFileHandler
 import os
 import json
 import time
+import threading
 from flask_caching import Cache
 from app.config import DevelopmentConfig, ProductionConfig
 
@@ -20,33 +21,41 @@ from .routes.deovr import deovr_bp
 # ── Cached account info with TTL ──────────────────────────────
 # Avoids hitting the RD API on every single page load.
 _account_cache = {"data": None, "error": None, "expires": 0}
+_account_cache_lock = threading.Lock()
+
 def _get_cached_account_info(app):
     """Return cached RD account info, refreshing at most every ACCOUNT_CACHE_TTL seconds."""
     cache_ttl = app.config.get('ACCOUNT_CACHE_TTL', 300)
     now = time.time()
-    if _account_cache["expires"] > now:
-        return _account_cache["data"], _account_cache["error"]
+
+    with _account_cache_lock:
+        if _account_cache["expires"] > now:
+            return _account_cache["data"], _account_cache["error"]
 
     from app.services.real_debrid import RealDebridService, RealDebridError
 
     api_key = app.config.get('REAL_DEBRID_API_KEY')
     if not api_key:
-        _account_cache["data"] = None
-        _account_cache["error"] = "Real-Debrid API key is not set."
-        _account_cache["expires"] = now + cache_ttl
-        return _account_cache["data"], _account_cache["error"]
+        with _account_cache_lock:
+            _account_cache["data"] = None
+            _account_cache["error"] = "Real-Debrid API key is not set."
+            _account_cache["expires"] = now + cache_ttl
+            return _account_cache["data"], _account_cache["error"]
 
     try:
         service = RealDebridService(api_key=api_key)
         info = service.get_account_info()
-        _account_cache["data"] = info
-        _account_cache["error"] = None
+        with _account_cache_lock:
+            _account_cache["data"] = info
+            _account_cache["error"] = None
     except RealDebridError as e:
-        _account_cache["data"] = None
-        _account_cache["error"] = str(e)
+        with _account_cache_lock:
+            _account_cache["data"] = None
+            _account_cache["error"] = str(e)
 
-    _account_cache["expires"] = now + cache_ttl
-    return _account_cache["data"], _account_cache["error"]
+    with _account_cache_lock:
+        _account_cache["expires"] = now + cache_ttl
+        return _account_cache["data"], _account_cache["error"]
 
 
 def create_app():
@@ -133,6 +142,22 @@ def create_app():
     except (FileNotFoundError, json.JSONDecodeError) as e:
         app.logger.error(f"Error loading video_extensions.json: {e}")
         video_extensions = []
+
+    # ── Security headers ──────────────────────────────────────────
+    @app.after_request
+    def set_security_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' https://fonts.googleapis.com https://cdnjs.cloudflare.com 'unsafe-inline'; "
+            "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'self'"
+        )
+        return response
 
     # ── before_request: cache account info in g ────────────────
     @app.before_request
