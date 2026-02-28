@@ -1,6 +1,24 @@
 // app/static/js/scripts.js
 
 // ──────────────────────────────────────────────────────────────
+// Toast notification system (replaces alert())
+// ──────────────────────────────────────────────────────────────
+var _toastContainer = null;
+function showToast(message, type) {
+  type = type || "info";
+  if (!_toastContainer) {
+    _toastContainer = document.createElement("div");
+    _toastContainer.className = "toast-container";
+    document.body.appendChild(_toastContainer);
+  }
+  var el = document.createElement("div");
+  el.className = "toast toast-" + type;
+  el.textContent = message;
+  _toastContainer.appendChild(el);
+  setTimeout(function () { el.remove(); }, 4000);
+}
+
+// ──────────────────────────────────────────────────────────────
 // DOMContentLoaded — main initialisation
 // ──────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", function () {
@@ -12,6 +30,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (modal) {
       modal.style.display = "none";
       modal.classList.remove("show");
+      if (typeof _releaseFocus === "function") _releaseFocus(modal);
     }
   };
 
@@ -20,6 +39,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (modal) {
       modal.style.display = "none";
       modal.classList.remove("show");
+      if (typeof _releaseFocus === "function") _releaseFocus(modal);
     }
   };
 
@@ -143,11 +163,11 @@ document.addEventListener("DOMContentLoaded", function () {
               if (dlUrl && isValidUrl(dlUrl)) {
                 window.open(dlUrl, "_blank");
               } else {
-                alert("Could not generate a download link. The link may have expired.");
+                showToast("Could not generate a download link. The link may have expired.", "error");
               }
             })
             .catch(function (err) {
-              alert("Download error: " + err.message);
+              showToast("Download error: " + err.message, "error");
             })
             .finally(function () {
               btn.innerHTML = origHTML;
@@ -178,10 +198,10 @@ document.addEventListener("DOMContentLoaded", function () {
               if (data.unrestricted_link && isValidUrl(data.unrestricted_link)) {
                 launchVLC(data.unrestricted_link);
               } else {
-                alert("Could not generate a VLC link. The link may have expired.");
+                showToast("Could not generate a VLC link. The link may have expired.", "error");
               }
             })
-            .catch(function (err) { alert("VLC error: " + err.message); })
+            .catch(function (err) { showToast("VLC error: " + err.message, "error"); })
             .finally(function () { btn.innerHTML = vlcOrigHTML; btn.disabled = false; });
         }
         break;
@@ -208,10 +228,10 @@ document.addEventListener("DOMContentLoaded", function () {
               if (data.unrestricted_link && isValidUrl(data.unrestricted_link)) {
                 launchHeresphere(data.unrestricted_link);
               } else {
-                alert("Could not generate a HereSphere link. The link may have expired.");
+                showToast("Could not generate a HereSphere link. The link may have expired.", "error");
               }
             })
-            .catch(function (err) { alert("HereSphere error: " + err.message); })
+            .catch(function (err) { showToast("HereSphere error: " + err.message, "error"); })
             .finally(function () { btn.innerHTML = hsOrigHTML; btn.disabled = false; });
         }
         break;
@@ -280,13 +300,48 @@ function loadVideoExtensions() {
 document.addEventListener("DOMContentLoaded", loadVideoExtensions);
 
 // ──────────────────────────────────────────────────────────────
-// Modal helpers
+// Modal helpers (with focus trap)
 // ──────────────────────────────────────────────────────────────
+var _previousFocus = null;
+
+function _trapFocus(modal) {
+  _previousFocus = document.activeElement;
+  var focusable = modal.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  if (focusable.length) focusable[0].focus();
+  modal._focusTrap = function (e) {
+    if (e.key !== "Tab" || !focusable.length) return;
+    var first = focusable[0];
+    var last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  modal.addEventListener("keydown", modal._focusTrap);
+}
+
+function _releaseFocus(modal) {
+  if (modal._focusTrap) {
+    modal.removeEventListener("keydown", modal._focusTrap);
+    modal._focusTrap = null;
+  }
+  if (_previousFocus) {
+    _previousFocus.focus();
+    _previousFocus = null;
+  }
+}
+
 function openFileModal(index) {
   var modal = document.getElementById("modal-" + index);
   if (modal) {
     modal.style.display = "flex";
     modal.classList.add("show");
+    _trapFocus(modal);
   }
 }
 
@@ -304,7 +359,7 @@ function openFileModal(index) {
  */
 function launchVLC(link) {
   if (!link) {
-    alert("No video URL provided for VLC.");
+    showToast("No video URL provided for VLC.", "error");
     return;
   }
 
@@ -354,7 +409,7 @@ function downloadM3U(link) {
  */
 function launchHeresphere(videoUrl) {
   if (!videoUrl) {
-    alert("No video URL provided for HereSphere.");
+    showToast("No video URL provided for HereSphere.", "error");
     return;
   }
 
@@ -378,7 +433,7 @@ function launchHeresphere(videoUrl) {
       console.log("HereSphere launched successfully on the server.");
     })
     .catch(function (error) {
-      alert("Error launching HereSphere: " + error.message);
+      showToast("Error launching HereSphere: " + error.message, "error");
     });
 }
 
@@ -512,6 +567,7 @@ function showFiles(torrentId) {
       if (modal) {
         modal.style.display = "flex";
         modal.classList.add("show");
+        _trapFocus(modal);
       }
     })
     .catch(function (error) {
@@ -532,7 +588,7 @@ function showFiles(torrentId) {
 // ──────────────────────────────────────────────────────────────
 function deleteTorrent(torrentId) {
   if (!torrentId || typeof torrentId !== "string") {
-    alert("Invalid torrent ID provided.");
+    showToast("Invalid torrent ID provided.", "error");
     return;
   }
 
@@ -554,14 +610,14 @@ function deleteTorrent(torrentId) {
     })
     .then(function (data) {
       if (data.status === "success") {
-        alert("Torrent deleted successfully!");
+        showToast("Torrent deleted successfully!", "success");
         location.reload();
       } else {
-        alert("Failed to delete the torrent: " + data.message);
+        showToast("Failed to delete the torrent: " + data.message, "error");
       }
     })
     .catch(function (error) {
-      alert("Error deleting torrent: " + error.message);
+      showToast("Error deleting torrent: " + error.message, "error");
     })
     .finally(function () {
       if (btn) {
@@ -581,7 +637,7 @@ function deleteSelectedTorrents() {
   var selectedCheckboxes = document.querySelectorAll(".torrent-checkbox:checked");
 
   if (selectedCheckboxes.length === 0) {
-    alert("Please select at least one torrent to delete.");
+    showToast("Please select at least one torrent to delete.", "error");
     return;
   }
 
@@ -610,9 +666,9 @@ function deleteSelectedTorrents() {
     })
     .then(function (data) {
       if (data.status === "success") {
-        alert("Selected torrents have been deleted successfully.");
+        showToast("Selected torrents have been deleted successfully.", "success");
       } else if (data.status === "partial_success") {
-        alert("Some torrents could not be deleted.");
+        showToast("Some torrents could not be deleted.", "error");
       }
       location.reload();
     })
@@ -648,11 +704,11 @@ function getUnrestrictedLink(originalLink) {
       if (data.unrestricted_link) {
         window.location.href = data.unrestricted_link;
       } else {
-        alert("Failed to generate unrestricted link.");
+        showToast("Failed to generate unrestricted link.", "error");
       }
     })
     .catch(function (error) {
-      alert("Error generating unrestricted link: " + error.message);
+      showToast("Error generating unrestricted link: " + error.message, "error");
     });
 }
 
@@ -694,7 +750,7 @@ function startStreamingSearch() {
   var limit = limitInput ? limitInput.value.trim() : "10";
 
   if (!query) {
-    alert("Please enter a search query.");
+    showToast("Please enter a search query.", "error");
     return;
   }
 
@@ -1033,7 +1089,7 @@ function hsPageLaunch(torrentId, target, btn) {
       }
     })
     .catch(function (err) {
-      alert("Launch error: " + err.message);
+      showToast("Launch error: " + err.message, "error");
     })
     .finally(function () {
       btn.innerHTML = origHTML;
@@ -1212,8 +1268,14 @@ document.addEventListener("DOMContentLoaded", function () {
     applyPagination();
   }
 
-  // Bind events
-  if (searchInput) searchInput.addEventListener("input", applyFilter);
+  // Bind events (debounce search to avoid reflow on every keystroke)
+  var filterTimer = null;
+  if (searchInput) {
+    searchInput.addEventListener("input", function () {
+      clearTimeout(filterTimer);
+      filterTimer = setTimeout(applyFilter, 300);
+    });
+  }
   if (sortSelect) sortSelect.addEventListener("change", applySort);
 
   // Apply initial sort (triggers pagination)

@@ -634,7 +634,7 @@ input[type="checkbox"]:checked::after {
     position: fixed;
     inset: 0;
     z-index: 1001;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(8px);
     justify-content: center;
     align-items: center;
@@ -1027,6 +1027,14 @@ input[type="checkbox"]:checked::after {
     aspect-ratio: 16 / 9;
     background: var(--bg-surface);
     overflow: hidden;
+}
+
+/* Fallback for browsers without aspect-ratio support */
+@supports not (aspect-ratio: 16 / 9) {
+    .hs-thumb-wrap {
+        padding-bottom: 56.25%;
+        height: 0;
+    }
 }
 
 .hs-thumb {
@@ -1503,4 +1511,49 @@ input[type="checkbox"]:checked::after {
     .hs-sort {
         width: 100%;
     }
+}
+
+/* --- Toast Notifications --- */
+.toast-container {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
+    pointer-events: auto;
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    color: #fff;
+    font-size: 0.9rem;
+    max-width: 400px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    animation: toast-in 0.3s ease, toast-out 0.3s ease 3.7s forwards;
+}
+
+.toast-error {
+    background: var(--red, #ef4444);
+}
+
+.toast-success {
+    background: var(--green, #22c55e);
+}
+
+.toast-info {
+    background: var(--accent, #6366f1);
+}
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateX(40px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-out {
+    from { opacity: 1; }
+    to   { opacity: 0; }
 }

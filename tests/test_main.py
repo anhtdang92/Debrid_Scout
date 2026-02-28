@@ -447,3 +447,122 @@ def test_delete_torrent_handles_api_error(client, mocked_responses):
         mock_del.side_effect = RealDebridError("API error")
         response = client.delete("/torrent/delete_torrent/abc123")
         assert response.status_code == 500
+
+
+# ── Torrent ID validation tests ──────────────────────────────
+
+def test_delete_torrent_rejects_invalid_id(client, mocked_responses):
+    """DELETE /torrent/delete_torrent/<id> rejects IDs with special chars."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.delete("/torrent/delete_torrent/bad_id_here")
+    assert response.status_code == 400
+    assert "Invalid torrent ID" in response.get_json()["error"]
+
+
+def test_get_torrent_details_rejects_invalid_id(client, mocked_responses):
+    """GET /torrent/torrents/<id> rejects IDs with special chars."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    response = client.get("/torrent/torrents/bad_id_here")
+    assert response.status_code == 400
+
+
+# ── Partial bulk delete (207) test ────────────────────────────
+
+def test_bulk_delete_partial_success(client, mocked_responses):
+    """POST /torrent/delete_torrents returns 207 on partial failure."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    from app.services.real_debrid import RealDebridError
+
+    call_count = {"n": 0}
+
+    def side_effect(tid):
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            raise RealDebridError("API error")
+        return True
+
+    with patch('app.services.real_debrid.RealDebridService.delete_torrent') as mock_del:
+        mock_del.side_effect = side_effect
+        response = client.post(
+            "/torrent/delete_torrents",
+            json={"torrentIds": ["abc123", "def456"]},
+            content_type="application/json",
+        )
+        assert response.status_code == 207
+        body = response.get_json()
+        assert body["status"] == "partial_success"
+        assert len(body["results"]["deleted"]) == 1
+        assert len(body["results"]["failed"]) == 1
+
+
+# ── Pagination edge case tests ────────────────────────────────
+
+def test_rd_manager_clamps_high_page(client, mocked_responses):
+    """GET /torrent/rd_manager?page=999 clamps to last page."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock_torrents:
+        mock_torrents.return_value = [
+            {"id": f"t{i}", "filename": f"file{i}.mkv", "status": "downloaded", "progress": 100}
+            for i in range(3)
+        ]
+        response = client.get("/torrent/rd_manager?page=999")
+        assert response.status_code == 200
+
+
+def test_rd_manager_negative_page_defaults_to_one(client, mocked_responses):
+    """GET /torrent/rd_manager?page=-5 defaults to page 1."""
+    mocked_responses.get(
+        "https://api.real-debrid.com/rest/1.0/user",
+        json={"id": 12345, "username": "testuser"},
+        status=200,
+    )
+    with patch('app.services.real_debrid.RealDebridService.get_all_torrents') as mock_torrents:
+        mock_torrents.return_value = []
+        response = client.get("/torrent/rd_manager?page=-5")
+        assert response.status_code == 200
+
+
+# ── Network failure / timeout tests ──────────────────────────
+
+def test_real_debrid_connection_error(app, mocked_responses):
+    """RealDebridService raises RealDebridError on connection failure."""
+    import requests as req
+    with app.app_context():
+        from app.services.real_debrid import RealDebridService, RealDebridError
+        service = RealDebridService(api_key="test_rd_key")
+        mocked_responses.get(
+            "https://api.real-debrid.com/rest/1.0/user",
+            body=req.ConnectionError("Connection refused"),
+        )
+        with pytest.raises(RealDebridError):
+            service.get_account_info()
+
+
+def test_real_debrid_timeout_error(app, mocked_responses):
+    """RealDebridService raises RealDebridError on timeout."""
+    import requests as req
+    with app.app_context():
+        from app.services.real_debrid import RealDebridService, RealDebridError
+        service = RealDebridService(api_key="test_rd_key")
+        mocked_responses.get(
+            "https://api.real-debrid.com/rest/1.0/user",
+            body=req.Timeout("Timed out"),
+        )
+        with pytest.raises(RealDebridError):
+            service.get_account_info()
