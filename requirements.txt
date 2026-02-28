@@ -12,5 +12,5 @@ gunicorn~=23.0
 pytest~=8.3
 pytest-mock~=3.14
 pytest-cov~=6.0
-responses~=0.25
+responses~=0.26
 mypy~=1.14
