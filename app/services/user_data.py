@@ -15,6 +15,7 @@ Thread-safe via a threading lock (HereSphere can fire rapid POSTs).
 import fcntl
 import json
 import os
+import tempfile
 import threading
 import logging
 from typing import Optional
@@ -157,16 +158,30 @@ class UserDataStore:
             return {}
 
     def _save(self):
-        """Write cache to disk with file locking for cross-process safety.
+        """Write cache to disk atomically with file locking.
 
+        Writes to a temp file first, then renames (atomic on POSIX).
         Caller must hold self._lock (thread lock). The file lock (flock)
         serialises writes across gunicorn workers.
         """
         try:
-            with open(self._path, 'w') as f:
-                fcntl.flock(f, fcntl.LOCK_EX)
-                json.dump(self._cache, f, indent=2)
-                f.flush()
-                fcntl.flock(f, fcntl.LOCK_UN)
+            fd, tmp_path = tempfile.mkstemp(
+                dir=self._dir, suffix='.tmp', prefix='user_data_'
+            )
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    fcntl.flock(f, fcntl.LOCK_EX)
+                    json.dump(self._cache, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                    fcntl.flock(f, fcntl.LOCK_UN)
+                os.replace(tmp_path, self._path)
+            except BaseException:
+                # Clean up temp file on any failure
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
         except OSError as e:
             logger.error(f"Could not save user data: {e}")

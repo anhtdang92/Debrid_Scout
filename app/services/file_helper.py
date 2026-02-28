@@ -10,27 +10,35 @@ logger = logging.getLogger(__name__)
 class FileHelper:
     """Helper class for handling file-related tasks, such as loading video extensions and formatting file sizes."""
 
-    @staticmethod
-    def load_video_extensions():
-        """Load video extensions from a JSON file located in the static folder."""
+    _video_extensions = None
+    _category_mapping = None
+
+    @classmethod
+    def load_video_extensions(cls):
+        """Load video extensions from a JSON file (cached after first load)."""
+        if cls._video_extensions is not None:
+            return cls._video_extensions
         try:
             static_folder_path = os.path.join(current_app.root_path, 'static')
             video_extensions_path = os.path.join(static_folder_path, 'video_extensions.json')
             with open(video_extensions_path, 'r') as f:
-                video_extensions = json.load(f).get("video_extensions", [])
-            return video_extensions
+                cls._video_extensions = json.load(f).get("video_extensions", [])
+            return cls._video_extensions
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.error(f"Error loading video extensions from video_extensions.json: {e}")
             return []
 
-    @staticmethod
-    def load_category_mapping():
-        """Load category mapping from a JSON file in the static folder."""
+    @classmethod
+    def load_category_mapping(cls):
+        """Load category mapping from a JSON file (cached after first load)."""
+        if cls._category_mapping is not None:
+            return cls._category_mapping
         try:
             static_folder_path = os.path.join(current_app.root_path, 'static')
             category_mapping_path = os.path.join(static_folder_path, 'category_mapping.json')
             with open(category_mapping_path, 'r') as f:
-                return {int(k): v for k, v in json.load(f).items()}
+                cls._category_mapping = {int(k): v for k, v in json.load(f).items()}
+            return cls._category_mapping
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.error(f"Error loading category mapping from category_mapping.json: {e}")
             return {}

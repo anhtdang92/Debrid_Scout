@@ -2,10 +2,12 @@ from flask import Blueprint, render_template, request, current_app, jsonify
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 from app.services.real_debrid import RealDebridService, RealDebridError
 from app.services.vr_helper import build_restricted_map
+from app.services.rd_cache import get_all_torrents_cached
 
 # Known install paths for VLC (per-platform)
 _VLC_PATHS_BY_OS = {
@@ -41,7 +43,7 @@ def rd_manager():
 
     if REAL_DEBRID_API_KEY:
         real_debrid_service = RealDebridService(api_key=REAL_DEBRID_API_KEY)
-        all_torrents = real_debrid_service.get_all_torrents()
+        all_torrents = get_all_torrents_cached(real_debrid_service)
         total_torrents = len(all_torrents)
         total_pages = (total_torrents + torrents_per_page - 1) // torrents_per_page
         torrents = all_torrents[(page - 1) * torrents_per_page: page * torrents_per_page]
@@ -151,6 +153,14 @@ def delete_torrents():
 
     if not torrent_ids:
         return jsonify({'status': 'error', 'error': 'No torrent IDs provided'}), 400
+
+    if not isinstance(torrent_ids, list) or len(torrent_ids) > 500:
+        return jsonify({'status': 'error', 'error': 'torrentIds must be a list of at most 500 items'}), 400
+
+    _ID_RE = re.compile(r'^[a-zA-Z0-9]+$')
+    for tid in torrent_ids:
+        if not isinstance(tid, str) or not _ID_RE.match(tid):
+            return jsonify({'status': 'error', 'error': f'Invalid torrent ID: {tid!r}'}), 400
 
     service = RealDebridService(api_key=current_app.config.get('REAL_DEBRID_API_KEY'))
     results = {'deleted': [], 'failed': []}

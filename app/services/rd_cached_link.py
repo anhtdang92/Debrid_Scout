@@ -34,6 +34,8 @@ class RDCachedLinkService:
             raise RDCachedLinkError("REAL_DEBRID_API_KEY is not set.")
 
         self.headers = {'Authorization': f'Bearer {self.api_key}'}
+        self._session = requests.Session()
+        self._session.headers.update(self.headers)
 
     # ------------------------------------------------------------------
     # Public API
@@ -128,7 +130,7 @@ class RDCachedLinkService:
         try:
             expected_bytes = int(expected_size)
             url = f"https://api.real-debrid.com/rest/1.0/torrents/instantAvailability/{infohash}"
-            response = requests.get(url, headers=self.headers, timeout=(connect, read))
+            response = self._session.get(url, timeout=(connect, read))
             response.raise_for_status()
             data = response.json()
 

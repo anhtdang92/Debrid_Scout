@@ -1086,7 +1086,7 @@ input[type="checkbox"]:checked::after {
     border: 1px solid var(--border);
     background: var(--bg-card);
     color: var(--text-secondary);
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: 0.85rem;
     transition: background 0.15s, color 0.15s;

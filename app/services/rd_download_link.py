@@ -101,9 +101,12 @@ class RDDownloadLinkService:
             futures = {executor.submit(_process_one, cl): cl for cl in unique_links}
             for future in as_completed(futures):
                 try:
-                    result = future.result()
+                    result = future.result(timeout=120)
                     if result:
                         final_output.append(result)
+                except TimeoutError:
+                    cl = futures[future]
+                    logger.error(f"Worker timed out for '{cl.get('title', '?')}'")
                 except Exception as e:
                     cl = futures[future]
                     logger.error(f"Concurrent processing error for '{cl.get('title', '?')}': {e}")

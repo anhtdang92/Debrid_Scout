@@ -10,8 +10,9 @@ os.environ.setdefault('JACKETT_URL', 'http://localhost:9117')
 
 from app import create_app
 
-# Reset the account info cache between tests so mocks fire properly
+# Reset caches between tests so mocks fire properly
 from app import _account_cache
+from app.services.rd_cache import clear_caches as _clear_rd_caches
 
 
 @pytest.fixture
@@ -25,10 +26,11 @@ def app():
         "JACKETT_URL": "http://localhost:9117",
         "WTF_CSRF_ENABLED": False,
     })
-    # Reset the account info cache so each test starts fresh
+    # Reset all caches so each test starts fresh
     _account_cache["data"] = None
     _account_cache["error"] = None
     _account_cache["expires"] = 0
+    _clear_rd_caches()
     yield app
 
 
