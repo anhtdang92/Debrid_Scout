@@ -139,15 +139,21 @@ class JackettSearchService:
             'limit': limit,
         }
 
-        max_retries = 5
-        delay = 2
+        try:
+            max_retries = current_app.config.get('JACKETT_RETRY_COUNT', 5)
+            delay = current_app.config.get('JACKETT_RETRY_DELAY', 2)
+            timeout = current_app.config.get('JACKETT_TIMEOUT', 20)
+        except RuntimeError:
+            max_retries = 5
+            delay = 2
+            timeout = 20
         session = self._create_session()
 
         logger.debug(f"Querying Jackett: {url} with query='{params['q']}' limit={params['limit']}")
         try:
             for attempt in range(1, max_retries + 1):
                 try:
-                    response = session.get(url, params=params, timeout=20)
+                    response = session.get(url, params=params, timeout=timeout)
                     logger.debug(f"Jackett HTTP response: {response.status_code}")
                     response.raise_for_status()
                     return response.content
@@ -249,7 +255,12 @@ class JackettSearchService:
         Requires bencodepy for .torrent parsing. If bencodepy is not installed,
         only magnet-redirect extraction is attempted.
         """
-        max_retries = 5
+        try:
+            max_retries = current_app.config.get('JACKETT_RETRY_COUNT', 5)
+            timeout = current_app.config.get('JACKETT_TIMEOUT', 20)
+        except RuntimeError:
+            max_retries = 5
+            timeout = 20
         delay = 5
         session = self._create_session()
 
@@ -258,7 +269,7 @@ class JackettSearchService:
                 try:
                     # Disable auto-redirects: some indexers redirect .torrent URLs to
                     # magnet links, which we can parse directly instead of downloading.
-                    response = session.get(torrent_url, allow_redirects=False, timeout=20)
+                    response = session.get(torrent_url, allow_redirects=False, timeout=timeout)
                     if response.status_code == 404:
                         return None
                     if response.status_code in (301, 302):

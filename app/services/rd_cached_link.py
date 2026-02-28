@@ -119,9 +119,16 @@ class RDCachedLinkService:
         }
 
         try:
+            connect = current_app.config.get('RD_CONNECT_TIMEOUT', 5)
+            read = current_app.config.get('RD_API_TIMEOUT', 15)
+        except RuntimeError:
+            connect = 5
+            read = 15
+
+        try:
             expected_bytes = int(expected_size)
             url = f"https://api.real-debrid.com/rest/1.0/torrents/instantAvailability/{infohash}"
-            response = requests.get(url, headers=self.headers, timeout=(5, 15))
+            response = requests.get(url, headers=self.headers, timeout=(connect, read))
             response.raise_for_status()
             data = response.json()
 

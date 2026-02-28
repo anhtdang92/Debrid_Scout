@@ -31,10 +31,16 @@ class RealDebridService:
         # Legacy attribute kept for compatibility
         self.headers = dict(self._session.headers)
 
-        # A small delay (in seconds) between requests to prevent rate limiting
-        self.request_delay = 0.2
-        # HTTP timeout: (connect_timeout, read_timeout) in seconds
-        self.timeout = (5, 15)
+        # Read timeouts from config (with fallbacks for non-Flask contexts)
+        try:
+            self.request_delay = current_app.config.get('RD_RATE_LIMIT_DELAY', 0.2)
+            connect = current_app.config.get('RD_CONNECT_TIMEOUT', 5)
+            read = current_app.config.get('RD_API_TIMEOUT', 15)
+        except RuntimeError:
+            self.request_delay = 0.2
+            connect = 5
+            read = 15
+        self.timeout = (connect, read)
 
     def _rate_limit(self):
         """Enforce a simple delay to avoid hitting rate limits."""
