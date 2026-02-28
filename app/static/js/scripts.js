@@ -28,24 +28,31 @@ document.addEventListener("DOMContentLoaded", function () {
     modal.style.display = "none";
   });
 
-  // ── Search form — normal POST with loading overlay ──────────
-  // FIX: removed the old fetch() + document.write() approach that
-  // destroyed the entire DOM.  We now let the browser POST the form
-  // normally and just show a spinner during navigation.
   const searchForm = document.getElementById("search-form");
-  const loadingOverlay = document.getElementById("loading");
 
-  if (searchForm && loadingOverlay) {
-    searchForm.addEventListener("submit", function () {
-      // Show the loading overlay; the browser will navigate away,
-      // so we don't need to hide it – the new page load resets it.
-      loadingOverlay.style.display = "flex";
-      // Do NOT call event.preventDefault() — we want the real POST.
+  // ── Search buttons (moved from inline onclick) ────────────
+  const submitButton = document.getElementById("submit-button");
+  if (submitButton) {
+    submitButton.addEventListener("click", function () {
+      startStreamingSearch();
+    });
+  }
+
+  var cancelButton = document.getElementById("cancel-button");
+  if (cancelButton) {
+    cancelButton.addEventListener("click", function () {
+      cancelStreamingSearch();
+    });
+  }
+
+  // Prevent default form submit (was inline onsubmit="return false")
+  if (searchForm) {
+    searchForm.addEventListener("submit", function (e) {
+      e.preventDefault();
     });
   }
 
   // Enter-key support (mirrors submit-button click)
-  const submitButton = document.getElementById("submit-button");
   if (searchForm && submitButton) {
     searchForm.addEventListener("keydown", function (event) {
       if (event.key === "Enter") {
@@ -54,6 +61,16 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
   }
+
+  // ── Image error handling (moved from inline onerror) ──────
+  document.querySelectorAll("img[data-error-class]").forEach(function (img) {
+    img.addEventListener("error", function () {
+      var cls = this.getAttribute("data-error-class");
+      if (cls && this.parentElement) {
+        this.parentElement.classList.add(cls);
+      }
+    });
+  });
 
   // ── Close modals on Escape key ──────────────────────────────
   document.addEventListener("keydown", function (event) {
@@ -644,8 +661,8 @@ function getUnrestrictedLink(originalLink) {
 // ──────────────────────────────────────────────────────────────
 function isValidUrl(string) {
   try {
-    new URL(string);
-    return true;
+    var parsed = new URL(string);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
   } catch (_) {
     return false;
   }

@@ -78,11 +78,11 @@ def test_delete_torrent_route(client, mocked_responses):
         status=200
     )
     mocked_responses.delete(
-        "https://api.real-debrid.com/rest/1.0/torrents/delete/sample_torrent_id",
+        "https://api.real-debrid.com/rest/1.0/torrents/delete/sampleTorrentId",
         status=204,
     )
 
-    response = client.delete("/torrent/delete_torrent/sample_torrent_id")
+    response = client.delete("/torrent/delete_torrent/sampleTorrentId")
     assert response.status_code == 200
     assert response.json['status'] == 'success'
 
@@ -134,7 +134,7 @@ def test_get_torrent_details_route(client, mocked_responses):
         status=200
     )
     mocked_responses.get(
-        "https://api.real-debrid.com/rest/1.0/torrents/info/sample_torrent_id",
+        "https://api.real-debrid.com/rest/1.0/torrents/info/sampleTorrentId",
         json={
             "filename": "Test.Movie.2024.mkv",
             "status": "downloaded",
@@ -154,7 +154,7 @@ def test_get_torrent_details_route(client, mocked_responses):
         status=200,
     )
 
-    response = client.get("/torrent/torrents/sample_torrent_id")
+    response = client.get("/torrent/torrents/sampleTorrentId")
     assert response.status_code == 200
     assert response.json['filename'] == "Test.Movie.2024.mkv"
     assert response.json['files'][0]['link'] == "https://download.real-debrid.com/d/abc123/Test.Movie.2024.mkv"

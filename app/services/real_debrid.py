@@ -49,7 +49,11 @@ class RealDebridService:
     def _check_response(self, response):
         """Check response for rate limiting; back off on 429."""
         if response.status_code == 429:
-            retry_after = int(response.headers.get('Retry-After', 2))
+            retry_after_raw = response.headers.get('Retry-After', '2')
+            try:
+                retry_after = int(retry_after_raw)
+            except (ValueError, TypeError):
+                retry_after = 2
             logger.warning(f"RD rate limit hit (429). Retrying after {retry_after}s.")
             time.sleep(retry_after)
             raise requests.HTTPError("429 Too Many Requests", response=response)
@@ -104,7 +108,7 @@ class RealDebridService:
             torrent_id = response.json().get('id')
             logger.debug(f"Magnet link added successfully with torrent ID: {torrent_id}")
             return torrent_id
-        except requests.RequestException as e:
+        except (requests.RequestException, ValueError) as e:
             logger.error(f"Error adding magnet link '{magnet_link}': {e}")
             raise RealDebridError("Failed to add magnet link.")
 
@@ -143,7 +147,7 @@ class RealDebridService:
             torrent_info = response.json()
             logger.debug(f"Torrent info fetched successfully for ID: {torrent_id}")
             return torrent_info
-        except requests.RequestException as e:
+        except (requests.RequestException, ValueError) as e:
             logger.error(f"Error fetching torrent info for ID {torrent_id}: {e}")
             raise RealDebridError(f"Failed to fetch info for torrent {torrent_id}.")
 
@@ -162,7 +166,7 @@ class RealDebridService:
             unrestricted_link = response.json().get('download')
             logger.debug(f"Link unrestricted successfully: {unrestricted_link}")
             return unrestricted_link
-        except requests.RequestException as e:
+        except (requests.RequestException, ValueError) as e:
             logger.error(f"Error unrestricting link '{link}': {e}")
             raise RealDebridError("Failed to unrestrict link.")
 
@@ -200,7 +204,7 @@ class RealDebridService:
             logger.info(f"Total torrents fetched: {len(all_torrents)}")
             return all_torrents
 
-        except requests.RequestException as e:
+        except (requests.RequestException, ValueError) as e:
             logger.error(f"Error fetching torrents: {e}")
             raise RealDebridError("Failed to fetch torrents.")
 

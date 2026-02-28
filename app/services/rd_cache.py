@@ -11,6 +11,7 @@ Provides TTL-based caching for:
 Moved here from heresphere.py to eliminate tight coupling between blueprints.
 """
 
+import os
 import time
 import logging
 import threading
@@ -19,15 +20,28 @@ from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# ── Torrent info cache (per-torrent, TTL = 5 min) ─────────────
+
+def _safe_int(name: str, default: int) -> int:
+    """Read an env var as int, falling back to default on parse error."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        logger.warning(f"Invalid {name}={raw!r}, using default {default}")
+        return default
+
+
+# ── Torrent info cache (per-torrent, TTL configurable) ─────────
 _torrent_cache: Dict[str, dict] = {}
 _torrent_cache_lock = threading.Lock()
-_TORRENT_CACHE_TTL = 300
+_TORRENT_CACHE_TTL = _safe_int('RD_TORRENT_CACHE_TTL', 300)
 
-# ── All-torrents list cache (TTL = 60s) ────────────────────────
+# ── All-torrents list cache (TTL configurable) ─────────────────
 _all_torrents_cache: Dict[str, object] = {"data": None, "expires": 0}
 _all_torrents_lock = threading.Lock()
-_ALL_TORRENTS_TTL = 60
+_ALL_TORRENTS_TTL = _safe_int('RD_ALL_TORRENTS_CACHE_TTL', 60)
 
 
 def clear_caches():
@@ -80,7 +94,8 @@ def batch_unrestrict(service, links: List[str], max_workers: int = 3) -> List[st
     def _unrestrict_one(idx: int, link: str) -> Tuple[int, str]:
         try:
             return idx, service.unrestrict_link(link)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to unrestrict link {idx}: {e}")
             return idx, link
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
