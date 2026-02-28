@@ -5,7 +5,7 @@ Flask-WTF~=1.2.0
 requests~=2.32
 cloudscraper~=1.2.71
 bencodepy~=0.9.5
-python-dotenv~=1.0.0
+python-dotenv~=1.2.1
 gunicorn~=23.0
 
 # Dev/Test
