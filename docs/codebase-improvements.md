@@ -318,3 +318,146 @@ HereSphere and RD Manager pages show no visual feedback while API data loads. Ad
 | P2 Medium | 10 | 10 ✅ | Accessibility, validation, caching, config |
 | P3 Polish | 10 | 10 ✅ | Color contrast, session cleanup, error logging |
 | **Total** | **37** | **37 ✅** | **All items complete** |
+
+---
+---
+
+# Round 2 — Post-Improvement Audit (Feb 2026)
+
+Full re-audit after completing all 37 Round 1 + 17 follow-up improvements.
+
+## Priority 1 — Bugs / Broken Features
+
+### R2-1. Contact form submits to non-existent route ✅
+`contact.html:26` — form POSTs to `/submit_contact_form` which has no route handler.
+**Fix:** Removed broken form, replaced with link to GitHub Issues.
+
+### R2-2. `api_key_set` template variable never injected ✅
+`account_info.html:23` — checks `{% if not api_key_set %}` but the variable was missing from `inject_globals()`.
+**Fix:** Added `"api_key_set": bool(app.config.get("REAL_DEBRID_API_KEY"))` to context processor.
+
+### R2-3. DeoVR auth blocks browser GET requests ✅
+`deovr.py:55-59` — unlike HereSphere, DeoVR's `before_request` doesn't exempt browser GET when `HERESPHERE_AUTH_TOKEN` is set.
+**Fix:** Added `is_browser_get` exemption matching HereSphere's pattern at `heresphere.py:72-74`.
+
+### R2-4. Dead `appendStreamResult()` function ✅
+`scripts.js:919` — after rAF batching refactor, this function is never called.
+**Fix:** Removed dead code.
+
+---
+
+## Priority 2 — Security
+
+### R2-5. Single-route torrent ID paths unvalidated
+`torrent.py:62, 97` — `/delete_torrent/<id>` and `/torrents/<id>` accept unvalidated IDs. Bulk delete validates (line 158-161) but singles don't.
+
+### R2-6. Inline onclick/onerror handlers violate CSP
+`index.html:24,27` — `onclick="startStreamingSearch()"`. `heresphere.html:74` — inline `onerror`. These bypass the CSP we added.
+
+### R2-7. Weak URL validation in JS
+`scripts.js:645-651` — `isValidUrl()` only checks URL constructor, doesn't block `javascript:` or `data:` protocols.
+
+### R2-8. Search cancel endpoint doesn't check auth token
+`search.py:149-163` — `/cancel` is CSRF-exempt but doesn't validate `HERESPHERE_AUTH_TOKEN`. Search ID is only 8 chars (line 113).
+
+### R2-9. No rate limiting on any endpoint
+All routes — `/stream`, `/heresphere`, `/deovr` can be called unlimited times, potentially exhausting RD API quota.
+
+### R2-10. Production should fail-fast without SECRET_KEY
+`__init__.py:89-92` — currently logs warning but continues with random key in production mode.
+
+---
+
+## Priority 3 — Reliability / Error Handling
+
+### R2-11. `batch_unrestrict` swallows exceptions silently
+`rd_cache.py:74-75` — no logging when unrestriction fails, falls back silently.
+
+### R2-12. `response.json()` not wrapped in try/except
+`real_debrid.py:66`, `rd_cached_link.py:135` — malformed API responses crash.
+
+### R2-13. `int(Retry-After)` can crash on date-format headers
+`real_debrid.py:52` — Retry-After can be a date string, not an integer.
+
+### R2-14. RD Manager pagination accepts extreme page numbers
+`torrent.py:37-39` — `page=9999999` causes unnecessary computation. Should clamp to total_pages.
+
+### R2-15. Cache TTLs hardcoded in rd_cache.py
+`rd_cache.py:25, 30` — TTLs (300s, 60s) should be configurable via env vars.
+
+### R2-16. Missing KeyError protection on RD API response
+`rd_cached_link.py:140-150` — `data[infohash]["rd"]` assumed to exist without guard.
+
+### R2-17. `UserDataStore.set_rating()` crashes on non-numeric input
+`user_data.py:65-73` — `float(dict)` = TypeError not caught.
+
+---
+
+## Priority 4 — Test Gaps
+
+### R2-18. No tests for network failures/timeouts
+`RequestException`, `ConnectionError`, 429 Retry-After paths untested across services.
+
+### R2-19. No test for partial bulk delete (207 response)
+The 207 `partial_success` code path in `torrent.py:177` is untested.
+
+### R2-20. pytest-cov and mypy not in requirements.txt
+CI installs them but `pip install -r requirements.txt` doesn't include them for local dev.
+
+### R2-21. No test for pagination edge cases
+page=0, negative page, page > total_pages untested.
+
+### R2-22. `assert_all_requests_are_fired=False` in fixtures
+`conftest.py:52` — mocked endpoints can go unconsumed without test failure.
+
+---
+
+## Priority 5 — Performance / UX
+
+### R2-23. Missing debounce on HereSphere search input
+`scripts.js:1209` — triggers filter/reflow on every keystroke. Should add 300ms debounce.
+
+### R2-24. No `aspect-ratio` CSS fallback
+`styles.css:1027` — older browsers show broken thumbnails without padding-bottom fallback.
+
+### R2-25. No `backdrop-filter` fallback
+`styles.css:67, 638, 1131` — modals have no background on unsupported browsers.
+
+### R2-26. Focus not trapped in modals
+`scripts.js:268-273` — keyboard users can tab outside dialog.
+
+### R2-27. `alert()` used for all error feedback
+`scripts.js:131, 164, 194, 362` — should use toast/inline notifications.
+
+---
+
+## Priority 6 — Infrastructure / CI
+
+### R2-28. No Python linting in CI
+ESLint runs for JS but no flake8/ruff for Python.
+
+### R2-29. Docker: single-stage build
+Image larger than needed, no layer cache optimization for pip install.
+
+### R2-30. Health check only checks key presence, not API connectivity
+`info.py:17-22` — doesn't verify APIs are actually reachable.
+
+### R2-31. No CODEOWNERS, issue templates, or PR template
+`.github/` directory lacks these standard files.
+
+### R2-32. Gunicorn workers hardcoded
+`Dockerfile:28` — `--workers 2 --threads 4` should be configurable via env var.
+
+---
+
+## Round 2 Summary
+
+| Priority | Count | Completed | Theme |
+|----------|-------|-----------|-------|
+| P1 Bugs | 4 | 4 ✅ | Contact form, template var, DeoVR auth, dead code |
+| P2 Security | 6 | 0 | ID validation, CSP, rate limiting |
+| P3 Reliability | 7 | 0 | Error handling, validation, config |
+| P4 Tests | 5 | 0 | Coverage gaps |
+| P5 UX | 5 | 0 | Debounce, CSS fallbacks, modals |
+| P6 Infra | 5 | 0 | Linting, Docker, templates |
+| **Total** | **32** | **4 ✅** | |

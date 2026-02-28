@@ -173,6 +173,7 @@ def create_app():
             "jackett_url": app.config.get("JACKETT_URL"),
             "account_info": getattr(g, 'account_info', None),
             "real_debrid_api_error": getattr(g, 'real_debrid_api_error', None),
+            "api_key_set": bool(app.config.get("REAL_DEBRID_API_KEY")),
         }
 
     # ── Register shared services as app extensions ───────────
