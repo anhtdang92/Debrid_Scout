@@ -54,9 +54,12 @@ def check_auth_and_log():
 
     token = current_app.config.get('HERESPHERE_AUTH_TOKEN')
     if token:
-        auth = request.headers.get('Authorization', '')
-        if auth != f'Bearer {token}':
-            return jsonify({"status": "error", "error": "Unauthorized"}), 401
+        is_browser_get = (request.method == 'GET'
+                          and 'text/html' in request.headers.get('Accept', ''))
+        if not is_browser_get:
+            auth = request.headers.get('Authorization', '')
+            if auth != f'Bearer {token}':
+                return jsonify({"status": "error", "error": "Unauthorized"}), 401
 
 
 # ── GET/POST /deovr — Library listing ─────────────────────

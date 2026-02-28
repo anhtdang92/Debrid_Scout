@@ -916,16 +916,6 @@ function buildStreamResultRow(torrent) {
   return tr;
 }
 
-function appendStreamResult(torrent) {
-  var tbody = document.getElementById("stream-results-body");
-  if (!tbody) return;
-  tbody.appendChild(buildStreamResultRow(torrent));
-  var countEl = document.getElementById("stream-total");
-  if (countEl) {
-    countEl.innerText = tbody.querySelectorAll("tr").length;
-  }
-}
-
 function cancelStreamingSearch() {
   if (currentSearchId) {
     fetch("/cancel", {
