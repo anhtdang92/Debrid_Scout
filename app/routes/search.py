@@ -110,7 +110,7 @@ def stream_search():
 
     # Create a cancel event for this search
     import uuid
-    search_id = str(uuid.uuid4())[:8]
+    search_id = str(uuid.uuid4())
     cancel_event = threading.Event()
     with _active_searches_lock:
         _active_searches[search_id] = cancel_event

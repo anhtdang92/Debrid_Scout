@@ -7,7 +7,7 @@
     <h2 id="home">Search</h2>
     <p class="subtitle">Search torrents and check Real-Debrid cache availability</p>
 
-    <form id="search-form" autocomplete="off" onsubmit="return false;">
+    <form id="search-form" autocomplete="off">
         <div class="form-group">
             <label for="query">Search Query</label>
             <div class="search-container">
@@ -21,10 +21,10 @@
             <input type="number" id="limit" name="limit" value="10" min="1" required autocomplete="off">
         </div>
         <div class="form-group full-width" style="flex-direction: row; gap: 8px;">
-            <button type="button" class="submit-button" id="submit-button" onclick="startStreamingSearch()">
+            <button type="button" class="submit-button" id="submit-button">
                 <i class="fa-solid fa-magnifying-glass"></i> Search
             </button>
-            <button type="button" class="delete-button" id="cancel-button" onclick="cancelStreamingSearch()"
+            <button type="button" class="delete-button" id="cancel-button"
                 style="display:none;">
                 <i class="fa-solid fa-stop"></i> Cancel
             </button>

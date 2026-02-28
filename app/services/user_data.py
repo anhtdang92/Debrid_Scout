@@ -64,7 +64,11 @@ class UserDataStore:
 
     def set_rating(self, torrent_id: str, value: float):
         """Set the star rating (0-5) for a torrent."""
-        value = max(0.0, min(5.0, float(value)))
+        try:
+            value = max(0.0, min(5.0, float(value)))
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid rating value for {torrent_id}: {value!r}")
+            return
         with self._lock:
             entry = self._cache.setdefault(torrent_id, {})
             if entry.get('rating') != value:

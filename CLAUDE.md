@@ -33,10 +33,15 @@ python app/main.py
 | `ACCOUNT_CACHE_TTL` | `300` | Seconds to cache RD account info |
 | `RD_RATE_LIMIT_DELAY` | `0.2` | Seconds between RD API calls |
 | `RD_API_TIMEOUT` | `15` | Timeout for RD API requests (seconds) |
+| `RD_CONNECT_TIMEOUT` | `5` | Connect timeout for RD API (seconds) |
+| `RD_TORRENT_CACHE_TTL` | `300` | TTL for per-torrent info cache (seconds) |
+| `RD_ALL_TORRENTS_CACHE_TTL` | `60` | TTL for all-torrents list cache (seconds) |
 | `JACKETT_TIMEOUT` | `20` | Timeout for Jackett requests (seconds) |
 | `JACKETT_RETRY_COUNT` | `5` | Max retries for Jackett queries |
 | `LOG_MAX_BYTES` | `10240` | Max log file size before rotation |
 | `THUMBNAIL_MAX_AGE_DAYS` | `7` | TTL for cached thumbnails/previews |
+| `GUNICORN_WORKERS` | `2` | Number of gunicorn worker processes (Docker) |
+| `GUNICORN_THREADS` | `4` | Number of threads per gunicorn worker (Docker) |
 
 ## Architecture
 
@@ -88,7 +93,7 @@ Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream
 
 ## Service Layer API
 
-### `RealDebridService` (`app/services/real_debrid.py` — 215 lines)
+### `RealDebridService` (`app/services/real_debrid.py` — 225 lines)
 - `get_account_info()` → Dict — fetch RD user/account data
 - `add_magnet(magnet_link)` → str (torrent_id) — add magnet to RD
 - `select_files(torrent_id, files='all')` → bool — select files for download
@@ -110,9 +115,9 @@ Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream
 - Deduplicates by infohash, checks RD instant availability API
 - Uses `requests.Session()` for connection pooling
 
-### `RDCacheService` (`app/services/rd_cache.py` — 92 lines)
-- `get_torrent_info_cached(service, torrent_id)` → dict — TTL-cached torrent info (5 min)
-- `get_all_torrents_cached(service)` → list — TTL-cached all-torrents list (60s)
+### `RDCacheService` (`app/services/rd_cache.py` — 107 lines)
+- `get_torrent_info_cached(service, torrent_id)` → dict — TTL-cached torrent info (configurable via `RD_TORRENT_CACHE_TTL`)
+- `get_all_torrents_cached(service)` → list — TTL-cached all-torrents list (configurable via `RD_ALL_TORRENTS_CACHE_TTL`)
 - `batch_unrestrict(service, links, max_workers=3)` → List[str] — concurrent link unrestriction via ThreadPoolExecutor
 - `clear_caches()` → None — reset all caches (used by test fixtures)
 - Thread-safe with `threading.Lock` for each cache
@@ -131,7 +136,7 @@ Streaming variant uses SSE (Server-Sent Events) via `search_and_get_links_stream
 - `cleanup(max_age_days=7)` → int — remove expired cache files
 - Singleton via `app.extensions['thumb_service']`
 
-### `UserDataStore` (`app/services/user_data.py` — 187 lines)
+### `UserDataStore` (`app/services/user_data.py` — 191 lines)
 - `is_favorite(torrent_id)` → bool
 - `get_rating(torrent_id)` → float
 - `get_playback_time(torrent_id)` → float (seconds)
@@ -163,25 +168,25 @@ app/
 ├── routes/
 │   ├── __init__.py          # Empty
 │   ├── search.py            # GET/POST /, POST /stream, POST /cancel (163 lines)
-│   ├── torrent.py           # /torrent/* — RD manager, delete, unrestrict, VLC launch (208 lines)
+│   ├── torrent.py           # /torrent/* — RD manager, delete, unrestrict, VLC launch (224 lines)
 │   ├── account.py           # GET /account/account
 │   ├── info.py              # GET /health, GET /about, GET /contact (35 lines)
 │   ├── heresphere.py        # /heresphere/* — HereSphere native VR API + HTML browser (683 lines)
-│   └── deovr.py             # /deovr/* — DeoVR-compatible VR API (288 lines)
+│   └── deovr.py             # /deovr/* — DeoVR-compatible VR API (291 lines)
 ├── services/
 │   ├── __init__.py          # Empty
-│   ├── real_debrid.py       # RealDebridService — RD API wrapper with Session pooling (215 lines)
+│   ├── real_debrid.py       # RealDebridService — RD API wrapper with Session pooling (225 lines)
 │   ├── jackett_search.py    # JackettSearchService — Torznab search + XML parsing (321 lines)
 │   ├── rd_cached_link.py    # RDCachedLinkService — cache availability + Session pooling (159 lines)
-│   ├── rd_cache.py          # Shared caching — torrent info, all-torrents, batch unrestrict (92 lines)
+│   ├── rd_cache.py          # Shared caching — torrent info, all-torrents, batch unrestrict (107 lines)
 │   ├── rd_download_link.py  # RDDownloadLinkService — full download pipeline (407 lines)
 │   ├── file_helper.py       # FileHelper — video extensions, file sizes, category mapping (72 lines)
 │   ├── vr_helper.py         # Shared VR utilities — projection, restricted maps, launch (188 lines)
 │   ├── thumbnail.py         # ThumbnailService — ffmpeg thumbnails + preview clips (315 lines)
-│   └── user_data.py         # UserDataStore — favorites, ratings, playback tracking (187 lines)
+│   └── user_data.py         # UserDataStore — favorites, ratings, playback tracking (191 lines)
 ├── static/
-│   ├── css/styles.css       # Main stylesheet — dark theme, skeletons, responsive (1506 lines)
-│   ├── js/scripts.js        # Frontend JS — SSE, modals, event delegation, VR launch (1254 lines)
+│   ├── css/styles.css       # Main stylesheet — dark theme, skeletons, responsive, toasts (1559 lines)
+│   ├── js/scripts.js        # Frontend JS — SSE, modals, event delegation, toasts, VR launch (1323 lines)
 │   ├── category_mapping.json # Torznab category ID → name mapping
 │   ├── category_icons.json  # Category → icon mapping for UI
 │   ├── video_extensions.json # List of recognized video file extensions
@@ -200,15 +205,15 @@ app/
     └── partials/
         └── search_results.html  # Search results partial (reused by SSE)
 
-tests/                       # 117 tests total
+tests/                       # 124 tests total
 ├── conftest.py              # Fixtures: app, client, runner, mocked_responses + cache reset (53 lines)
-├── test_main.py             # Route + integration tests: 31 tests (449 lines)
+├── test_main.py             # Route + integration tests: 38 tests (568 lines)
 ├── test_search.py           # Search + SSE streaming tests: 13 tests (230 lines)
 ├── test_services.py         # Service unit tests: 25 tests (318 lines)
 └── test_vr_routes.py        # VR route + service tests: 48 tests (1021 lines)
 
 docs/
-├── codebase-improvements.md # 37-item improvement plan (all complete ✅)
+├── codebase-improvements.md # Round 1 (37 items ✅) + Round 2 (32 items, 30 ✅)
 └── heresphere-improvements.md # HereSphere-specific improvement plan
 
 Root files:
@@ -217,10 +222,12 @@ Root files:
 ├── .gitattributes           # Git LFS / line ending config
 ├── .dockerignore            # Docker build exclusions
 ├── .github/dependabot.yml   # Dependabot config for pip, npm, GitHub Actions, Docker
-├── .github/workflows/ci.yml # GitHub Actions CI (pytest + coverage + mypy + ESLint, Python 3.11/3.12)
+├── .github/workflows/ci.yml # GitHub Actions CI (pytest + coverage + ruff + mypy + ESLint, Python 3.11/3.12)
+├── .github/pull_request_template.md  # PR template
+├── .github/ISSUE_TEMPLATE/  # Bug report + feature request templates
 ├── docker-compose.yml       # Docker Compose with named volumes
-├── Dockerfile               # Container build (gunicorn, non-root user, port 5000)
-├── requirements.txt         # Python dependencies (13 packages, pinned upper bounds)
+├── Dockerfile               # Multi-stage build (gunicorn, non-root user, port 5000)
+├── requirements.txt         # Python dependencies (15 packages, pinned upper bounds)
 ├── package.json             # Node config (ESLint, Prettier, Commitizen, lint-staged)
 ├── eslint.config.mjs        # ESLint flat config with @eslint/js recommended rules
 ├── mypy.ini                 # Python type checking config (gradual adoption)
@@ -251,7 +258,7 @@ Root files:
 - **HereSphere native API** — structured tags, time-based library sections (Recent/This Month/Older), `HereSphere-JSON-Version: 1` header, write-back for favorites/ratings
 - **DeoVR API** — simplified format with `screenType`/`stereoMode` fields, `encodings` array
 - **Playback tracking** — `UserDataStore` persists favorites, ratings, playback position, play count to `data/user_data.json` with thread-safe `threading.Lock()` and atomic file writes (`tempfile.mkstemp` + `os.replace`)
-- **Input validation** — bulk delete endpoint validates array length (max 500) and torrent ID format (alphanumeric only)
+- **Input validation** — all torrent ID routes validate format (alphanumeric only); bulk delete validates array length (max 500)
 - **Video thumbnails** — `ThumbnailService` generates JPEG thumbnails and MP4 preview clips via ffmpeg, with TTL-based cleanup
 - **SSE streaming** — search results streamed via `text/event-stream` with cancellation support (`threading.Event`), thread-safe active search tracking, `requestAnimationFrame`-based backpressure on the client side
 - **Shared VR helpers** — `build_restricted_map()` and `get_video_files()` eliminate duplication across heresphere, deovr, and torrent routes
@@ -261,16 +268,21 @@ Root files:
 - **Rotating logs** — `logs/app.log`, configurable max size via `LOG_MAX_BYTES`, 10 backup files
 - **DOM batching** — `DocumentFragment` used for pagination and sort re-ordering to minimize reflows
 - **Concurrent torrent processing** — `ThreadPoolExecutor` in `RDDownloadLinkService` with per-future timeouts (120s) and app context propagation
-- **Docker support** — non-root user, gunicorn, `.dockerignore` for clean builds, `docker-compose.yml` with named volumes
+- **Toast notifications** — non-blocking toast system replaces all `alert()` calls; auto-dismiss with slide-in/fade-out animation
+- **Modal focus trapping** — Tab key cycles within focusable elements; focus restored on close
+- **URL protocol validation** — `isValidUrl()` restricts to `http:`/`https:` protocols, blocking `javascript:` and `data:` URIs
+- **Debounced search filter** — HereSphere library search input debounced at 300ms to avoid per-keystroke reflows
+- **Docker support** — multi-stage build, non-root user, gunicorn (configurable workers/threads via env), `.dockerignore` for clean builds, `docker-compose.yml` with named volumes
 - **Health check** — `/health` endpoint returns JSON with service status and key-set checks for Docker `HEALTHCHECK`
 
 ## Running Tests
 
 ```bash
-pytest tests/                # 117 tests
+pytest tests/                # 124 tests
 pytest tests/ -v             # verbose output
 pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=70  # with coverage
 mypy app/ --config-file mypy.ini  # type checking (gradual)
+ruff check app/ tests/       # Python linting
 npx eslint app/static/js/    # JS linting
 ```
 
@@ -280,11 +292,11 @@ Test fixtures in `conftest.py` reset both the account cache and `rd_cache` cache
 ## Development Conventions
 
 - **Commits:** Conventional Commits via Commitizen (feat, fix, refactor, docs, etc.)
-- **Linting:** ESLint (recommended rules + no-var, prefer-const, eqeqeq) + Prettier for JS; Husky + lint-staged for pre-commit hooks
+- **Linting:** ruff for Python; ESLint (recommended rules + no-var, prefer-const, eqeqeq) + Prettier for JS; Husky + lint-staged for pre-commit hooks
 - **Type checking:** mypy configured for gradual adoption (`mypy.ini`)
 - **Versioning:** standard-version for semantic versioning
 - **Branching:** `main` is the primary branch
-- **CI:** GitHub Actions runs pytest with coverage (70% threshold), mypy, and ESLint on push/PR (Python 3.11/3.12 matrix)
+- **CI:** GitHub Actions runs pytest with coverage (70% threshold), ruff, mypy, and ESLint on push/PR (Python 3.11/3.12 matrix)
 
 ## Dependencies
 
@@ -294,4 +306,4 @@ Key Python packages (see `requirements.txt`):
 - python-dotenv, gunicorn
 
 Dev/test packages:
-- pytest, pytest-mock, responses, mypy
+- pytest, pytest-mock, pytest-cov, responses, mypy

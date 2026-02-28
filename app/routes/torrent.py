@@ -28,6 +28,15 @@ _VLC_PATHS = _VLC_PATHS_BY_OS.get(platform.system(), [])
 torrent_bp = Blueprint('torrent', __name__)
 logger = logging.getLogger(__name__)
 
+_ID_RE = re.compile(r'^[a-zA-Z0-9]+$')
+
+
+def _validate_torrent_id(torrent_id):
+    """Return an error response if torrent_id is invalid, else None."""
+    if not torrent_id or not _ID_RE.match(torrent_id):
+        return jsonify({'status': 'error', 'error': f'Invalid torrent ID: {torrent_id!r}'}), 400
+    return None
+
 
 @torrent_bp.route('/rd_manager')
 def rd_manager():
@@ -45,7 +54,9 @@ def rd_manager():
         real_debrid_service = RealDebridService(api_key=REAL_DEBRID_API_KEY)
         all_torrents = get_all_torrents_cached(real_debrid_service)
         total_torrents = len(all_torrents)
-        total_pages = (total_torrents + torrents_per_page - 1) // torrents_per_page
+        total_pages = max(1, (total_torrents + torrents_per_page - 1) // torrents_per_page)
+        if page > total_pages:
+            page = total_pages
         torrents = all_torrents[(page - 1) * torrents_per_page: page * torrents_per_page]
     else:
         real_debrid_api_error = "API key is missing."
@@ -62,6 +73,9 @@ def rd_manager():
 @torrent_bp.route('/delete_torrent/<torrent_id>', methods=['DELETE'])
 def delete_torrent(torrent_id):
     """Delete a single torrent from Real-Debrid by ID."""
+    invalid = _validate_torrent_id(torrent_id)
+    if invalid:
+        return invalid
     try:
         service = RealDebridService(api_key=current_app.config.get('REAL_DEBRID_API_KEY'))
         service.delete_torrent(torrent_id)
@@ -97,6 +111,9 @@ def unrestrict_link():
 @torrent_bp.route('/torrents/<torrent_id>', methods=['GET'])
 def get_torrent_details(torrent_id):
     """Fetch and return file details for a specific torrent."""
+    invalid = _validate_torrent_id(torrent_id)
+    if invalid:
+        return invalid
     try:
         service = RealDebridService(api_key=current_app.config.get('REAL_DEBRID_API_KEY'))
         torrent_data = service.get_torrent_info(torrent_id)
@@ -157,7 +174,6 @@ def delete_torrents():
     if not isinstance(torrent_ids, list) or len(torrent_ids) > 500:
         return jsonify({'status': 'error', 'error': 'torrentIds must be a list of at most 500 items'}), 400
 
-    _ID_RE = re.compile(r'^[a-zA-Z0-9]+$')
     for tid in torrent_ids:
         if not isinstance(tid, str) or not _ID_RE.match(tid):
             return jsonify({'status': 'error', 'error': f'Invalid torrent ID: {tid!r}'}), 400
